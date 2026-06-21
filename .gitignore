@@ -1,0 +1,25 @@
+# Gradle / Kotlin
+.gradle/
+build/
+**/build/
+local.properties
+*.hprof
+
+# IDE
+.idea/
+*.iml
+.kotlin/
+
+# Xcode / iOS
+xcuserdata/
+*.xcuserstate
+DerivedData/
+.swiftpm/
+Pods/
+
+# OS
+.DS_Store
+
+# Claude worktrees (kept local, like chat-kmp)
+.claude/worktrees/
+.claude/projects/
