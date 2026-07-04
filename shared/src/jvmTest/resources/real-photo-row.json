@@ -1,0 +1,97 @@
+{
+  "fileId": "25c75519-002a-d500-2f89-e637a48ac008",
+  "driveId": "6483b7b1-f71b-d43e-b689-6c86148668cc",
+  "serverFileIsEncrypted": true,
+  "fileState": "active",
+  "fileSystemType": "standard",
+  "keyHeader": {
+    "iv": [
+      49,
+      -89,
+      -104,
+      -46,
+      126,
+      -11,
+      42,
+      98,
+      -50,
+      117,
+      22,
+      -75,
+      56,
+      -43,
+      91,
+      85
+    ],
+    "aesKey": {
+      "bytes": "<redacted>"
+    }
+  },
+  "fileMetadata": {
+    "globalTransitId": "4f72fc0a-c82d-4688-b809-56e64749fa0d",
+    "created": 1777366791810,
+    "updated": 1777366791810,
+    "transitCreated": 0,
+    "transitUpdated": 0,
+    "isEncrypted": false,
+    "senderOdinId": "frodobaggins.me",
+    "originalAuthor": "frodobaggins.me",
+    "appData": {
+      "uniqueId": "dd9eb92c-909c-2ba5-deff-9dfeeaab9e50",
+      "tags": [],
+      "fileType": 0,
+      "dataType": 0,
+      "userDate": 1684679888366,
+      "content": "{\"camera\":{},\"captureDetails\":{},\"originalFileName\":\"TheEye.png\"}",
+      "previewThumbnail": {
+        "pixelWidth": 2700,
+        "pixelHeight": 2200,
+        "contentType": "image/webp",
+        "content": "UklGRmwDAABXRUJQVlA4WAoAAAAwAAAAEwAAEAAASUNDUMgBAAAAAAHIAAAAAAQwAABtbnRyUkdCIFhZWiAH4AABAAEAAAAAAABhY3NwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAA9tYAAQAAAADTLQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAlkZXNjAAAA8AAAACRyWFlaAAABFAAAABRnWFlaAAABKAAAABRiWFlaAAABPAAAABR3dHB0AAABUAAAABRyVFJDAAABZAAAAChnVFJDAAABZAAAAChiVFJDAAABZAAAAChjcHJ0AAABjAAAADxtbHVjAAAAAAAAAAEAAAAMZW5VUwAAAAgAAAAcAHMAUgBHAEJYWVogAAAAAAAAb6IAADj1AAADkFhZWiAAAAAAAABimQAAt4UAABjaWFlaIAAAAAAAACSgAAAPhAAAts9YWVogAAAAAAAA9tYAAQAAAADTLXBhcmEAAAAAAAQAAAACZmYAAPKnAAANWQAAE9AAAApbAAAAAAAAAABtbHVjAAAAAAAAAAEAAAAMZW5VUwAAACAAAAAcAEcAbwBvAGcAbABlACAASQBuAGMALgAgADIAMAAxADZBTFBIBAEAAAW5CkT0PwDHtrVjz6li27ZtO61ZpeU/g6zMwK3N1rZt21bl5Pv/MURMwAQQglI+fAG+fJACCRXJaeQDwKQU716IU5UvRZxxAPy0a1TggZC6LKfKQTiTgTJ3BKLZKgRgAEIBENnQ5Z8mEzOAYW6aIcm8IICnQzcA2ItUCJjkqB3iLPMFiPRYA+EONfpcgbYIGWJB0lo+LADYNSmDRBkm7QJgwUctiWJliKANV/rU6CBmTQ8RwNeyOGjnaBJQKJI9ADcOeQKCzEuCZm6GATNMaAKALhtEAITCAACFbEXD/ztlDGSCcLlTWdQJ4EGBRu38ABgXJ0U+VRD74l2KSQB8NJKjCAAAVlA4IHIAAAAwBACdASoUABEAP3Gqy120rKikqAqqkC4JbACpBcq/qrlgAA8RP0MWbVAA5x5htsv7zAROQjuygPADkIm+yMnIfa3aJ+ZzhJS1/u6+CyjdLCCYshxYOkvCWpQRo3ZsQPhlmdzQIfWzO5oEPwX+uatzGAA="
+      },
+      "archivalStatus": 0
+    },
+    "versionTag": "25c75519-703c-d400-86ed-74e993a24051",
+    "payloads": [
+      {
+        "key": "dflt_key",
+        "contentType": "image/png",
+        "thumbnails": [
+          {
+            "pixelWidth": 20,
+            "pixelHeight": 17,
+            "contentType": "image/webp",
+            "bytesWritten": 896
+          },
+          {
+            "pixelWidth": 300,
+            "pixelHeight": 245,
+            "contentType": "image/webp",
+            "bytesWritten": 12448
+          },
+          {
+            "pixelWidth": 1200,
+            "pixelHeight": 978,
+            "contentType": "image/webp",
+            "bytesWritten": 86176
+          }
+        ],
+        "iv": "Ul+zwriR8YtuPmQqfmVYfA==",
+        "bytesWritten": 1585968,
+        "lastModified": 1741012751295,
+        "uid": 114099011650060288
+      }
+    ]
+  },
+  "serverMetadata": {
+    "accessControlList": {
+      "requiredSecurityGroup": "owner"
+    },
+    "allowDistribution": false,
+    "fileSystemType": "standard",
+    "fileByteCount": 1692109,
+    "originalRecipientCount": 0
+  },
+  "priority": 1,
+  "fileByteCount": 1692109
+}

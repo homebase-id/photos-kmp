@@ -1,0 +1,566 @@
+package id.homebase.api.image
+
+
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.Matrix
+import android.os.Build
+import androidx.annotation.RequiresApi
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.core.graphics.scale
+import co.touchlab.kermit.Logger
+import id.homebase.api.lib.image.ImageFormatDetector
+import java.io.ByteArrayInputStream
+import java.io.ByteArrayOutputStream
+import androidx.exifinterface.media.ExifInterface
+import id.homebase.api.image.draw.PathCommand
+import id.homebase.api.image.draw.StrokeCap
+import id.homebase.api.image.draw.StrokeCommand
+import id.homebase.api.image.draw.StrokeKind
+import id.homebase.api.image.draw.stackBlur
+import android.graphics.BitmapShader
+import android.graphics.Shader
+import android.graphics.Canvas as AndroidCanvas
+import android.graphics.RectF
+import com.caverock.androidsvg.SVG
+
+/**
+ * Android implementation: Convert ByteArray to ImageBitmap using Android's BitmapFactory
+ *
+ * Note: Hardware bitmaps (HARDWARE config) cannot be used with Compose ImageBitmap.
+ * We configure BitmapFactory to use ARGB_8888 instead to ensure compatibility.
+ *
+ * Image format detection and validation should be done before calling this function
+ * using ImageFormatDetector in common code.
+ */
+actual fun ByteArray.toImageBitmap(): ImageBitmap? {
+    Logger.d(tag = "toImageBitmap") { "Android: Converting ${size} bytes to ImageBitmap" }
+
+    return try {
+        // Configure BitmapFactory to avoid hardware bitmaps
+        val options = BitmapFactory.Options().apply {
+            // Prevent hardware bitmap allocation (not compatible with Compose)
+            inPreferredConfig = Bitmap.Config.ARGB_8888
+            inMutable = false
+        }
+
+        val bitmap = BitmapFactory.decodeByteArray(this, 0, this.size, options)
+        if (bitmap == null) {
+            Logger.e(tag = "toImageBitmap") { "Android: BitmapFactory.decodeByteArray returned null" }
+            Logger.e(tag = "toImageBitmap") {
+                "First 16 bytes: ${
+                    take(16).joinToString(" ") { "%02X".format(it.toInt() and 0xFF) }
+                }"
+            }
+            return null
+        }
+
+        Logger.d(tag = "toImageBitmap") { "Android: Successfully decoded ${bitmap.width}x${bitmap.height}, config=${bitmap.config}" }
+        bitmap.asImageBitmap()
+    } catch (e: Exception) {
+        Logger.e(throwable = e, tag = "toImageBitmap") { "Android: Decoding failed - ${e.message}" }
+        null
+    }
+}
+
+/**
+ * Android: Convert HEIC to JPEG using BitmapFactory (supports HEIC on API 28+).
+ */
+actual fun convertHeicToJpeg(heicBytes: ByteArray): ByteArray? {
+    return try {
+        val options = BitmapFactory.Options().apply {
+            inPreferredConfig = Bitmap.Config.ARGB_8888
+        }
+        val bitmap = BitmapFactory.decodeByteArray(heicBytes, 0, heicBytes.size, options)
+            ?: return null
+        val stream = ByteArrayOutputStream()
+        bitmap.compress(Bitmap.CompressFormat.JPEG, 95, stream)
+        bitmap.recycle()
+        stream.toByteArray()
+    } catch (e: Exception) {
+        Logger.e(throwable = e, tag = "convertHeicToJpeg") { "Android HEIC conversion failed" }
+        null
+    }
+}
+
+/**
+ * Android implementation of ImageUtils using Android Bitmap APIs
+ */
+actual object ImageUtils {
+
+    private fun decodeBitmap(bytes: ByteArray): Bitmap {
+        val isHeic = ImageFormatDetector.isHeic(bytes)
+        val inputBytes = if (isHeic) {
+            convertHeicToJpeg(bytes) ?: throw IllegalArgumentException("Failed to convert HEIC to JPEG")
+        } else bytes
+        val options = BitmapFactory.Options().apply {
+            inPreferredConfig = Bitmap.Config.ARGB_8888
+            inMutable = true
+        }
+        val bitmap = BitmapFactory.decodeByteArray(inputBytes, 0, inputBytes.size, options)
+            ?: throw IllegalArgumentException("Failed to decode image bytes")
+        // HEIC special-case: the orientation tag lives in the original HEIC,
+        // and our convertHeicToJpeg goes Bitmap → JPEG via Bitmap.compress
+        // which writes no EXIF — reading from inputBytes (the converted JPEG)
+        // would always return ORIENTATION_NORMAL and silently drop the iPhone
+        // camera's rotation. Read from the original HEIC bytes instead;
+        // androidx.exifinterface supports HEIC since 1.2.
+        val exifBytes = if (isHeic) bytes else inputBytes
+        return applyExifOrientation(bitmap, exifBytes)
+    }
+
+    private fun applyExifOrientation(bitmap: Bitmap, imageBytes: ByteArray): Bitmap {
+        val exif = ExifInterface(ByteArrayInputStream(imageBytes))
+        val orientation = exif.getAttributeInt(
+            ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL
+        )
+        if (orientation == ExifInterface.ORIENTATION_NORMAL ||
+            orientation == ExifInterface.ORIENTATION_UNDEFINED
+        ) {
+            return bitmap
+        }
+
+        val matrix = Matrix()
+        when (orientation) {
+            ExifInterface.ORIENTATION_FLIP_HORIZONTAL -> matrix.setScale(-1f, 1f)
+            ExifInterface.ORIENTATION_ROTATE_180 -> matrix.setRotate(180f)
+            ExifInterface.ORIENTATION_FLIP_VERTICAL -> {
+                matrix.setRotate(180f)
+                matrix.postScale(-1f, 1f)
+            }
+            ExifInterface.ORIENTATION_TRANSPOSE -> {
+                matrix.setRotate(90f)
+                matrix.postScale(-1f, 1f)
+            }
+            ExifInterface.ORIENTATION_ROTATE_90 -> matrix.setRotate(90f)
+            ExifInterface.ORIENTATION_TRANSVERSE -> {
+                matrix.setRotate(-90f)
+                matrix.postScale(-1f, 1f)
+            }
+            ExifInterface.ORIENTATION_ROTATE_270 -> matrix.setRotate(-90f)
+        }
+
+        val corrected = Bitmap.createBitmap(
+            bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true
+        )
+        if (corrected != bitmap) bitmap.recycle()
+        return corrected
+    }
+
+    @RequiresApi(Build.VERSION_CODES.R)
+    private fun encodeBitmap(bitmap: Bitmap, format: ImageFormat, quality: Int): ByteArray {
+        val compressFormat = when (format) {
+            ImageFormat.JPEG -> Bitmap.CompressFormat.JPEG
+            ImageFormat.PNG -> Bitmap.CompressFormat.PNG
+            ImageFormat.WEBP -> Bitmap.CompressFormat.WEBP_LOSSY
+            ImageFormat.BMP -> Bitmap.CompressFormat.PNG // BMP not supported, fallback to PNG
+            ImageFormat.GIF -> Bitmap.CompressFormat.WEBP_LOSSY // GIF not supported, fallback to WEBP
+        }
+
+        val stream = ByteArrayOutputStream()
+        bitmap.compress(compressFormat, quality, stream)
+        return stream.toByteArray()
+    }
+
+    @RequiresApi(Build.VERSION_CODES.R)
+    actual fun resizePreserveAspect(
+        srcBytes: ByteArray,
+        maxWidth: Int,
+        maxHeight: Int,
+        outputFormat: ImageFormat,
+        quality: Int
+    ): ImageResult {
+        val srcBitmap = decodeBitmap(srcBytes)
+        val naturalW = srcBitmap.width
+        val naturalH = srcBitmap.height
+
+        val (targetW, targetH) = calculateTargetDimensions(naturalW, naturalH, maxWidth, maxHeight)
+
+        // If no resize needed
+        if (targetW == naturalW && targetH == naturalH) {
+            val encoded = encodeBitmap(srcBitmap, outputFormat, quality)
+            srcBitmap.recycle()
+            return ImageResult(
+                bytes = encoded,
+                naturalSize = ImageSize(naturalW, naturalH),
+                size = ImageSize(naturalW, naturalH)
+            )
+        }
+
+        // Resize the bitmap
+        val resized = srcBitmap.scale(targetW, targetH)
+        val encoded = encodeBitmap(resized, outputFormat, quality)
+
+        srcBitmap.recycle()
+        if (resized != srcBitmap) resized.recycle()
+
+        return ImageResult(
+            bytes = encoded,
+            naturalSize = ImageSize(naturalW, naturalH),
+            size = ImageSize(targetW, targetH)
+        )
+    }
+
+    @RequiresApi(Build.VERSION_CODES.R)
+    actual fun compressOnly(
+        srcBytes: ByteArray,
+        outputFormat: ImageFormat,
+        quality: Int
+    ): ImageResult {
+        val srcBitmap = decodeBitmap(srcBytes)
+        val encoded = encodeBitmap(srcBitmap, outputFormat, quality)
+
+        val result = ImageResult(
+            bytes = encoded,
+            naturalSize = ImageSize(srcBitmap.width, srcBitmap.height),
+            size = ImageSize(srcBitmap.width, srcBitmap.height)
+        )
+
+        srcBitmap.recycle()
+        return result
+    }
+
+    @RequiresApi(Build.VERSION_CODES.R)
+    actual fun crop(
+        srcBytes: ByteArray,
+        x: Int,
+        y: Int,
+        width: Int,
+        height: Int,
+        outputFormat: ImageFormat,
+        quality: Int
+    ): ImageResult {
+        val srcBitmap = decodeBitmap(srcBytes)
+        val naturalW = srcBitmap.width
+        val naturalH = srcBitmap.height
+
+        val sx = x.coerceAtLeast(0)
+        val sy = y.coerceAtLeast(0)
+        val sw = width.coerceAtMost(naturalW - sx).coerceAtLeast(1)
+        val sh = height.coerceAtMost(naturalH - sy).coerceAtLeast(1)
+
+        val cropped = Bitmap.createBitmap(srcBitmap, sx, sy, sw, sh)
+        val encoded = encodeBitmap(cropped, outputFormat, quality)
+
+        srcBitmap.recycle()
+        if (cropped != srcBitmap) cropped.recycle()
+
+        return ImageResult(
+            bytes = encoded,
+            naturalSize = ImageSize(naturalW, naturalH),
+            size = ImageSize(sw, sh)
+        )
+    }
+
+    @RequiresApi(Build.VERSION_CODES.R)
+    actual fun rotate(
+        srcBytes: ByteArray,
+        degrees: Int,
+        outputFormat: ImageFormat,
+        quality: Int
+    ): ImageResult {
+        val srcBitmap = decodeBitmap(srcBytes)
+        val naturalW = srcBitmap.width
+        val naturalH = srcBitmap.height
+
+        val matrix = Matrix().apply {
+            postRotate(degrees.toFloat())
+        }
+
+        val rotated = Bitmap.createBitmap(srcBitmap, 0, 0, naturalW, naturalH, matrix, true)
+        val encoded = encodeBitmap(rotated, outputFormat, quality)
+
+        srcBitmap.recycle()
+        if (rotated != srcBitmap) rotated.recycle()
+
+        return ImageResult(
+            bytes = encoded,
+            naturalSize = ImageSize(naturalW, naturalH),
+            size = ImageSize(rotated.width, rotated.height)
+        )
+    }
+
+    actual fun getNaturalSize(srcBytes: ByteArray): ImageSize {
+        val inputBytes = if (ImageFormatDetector.isHeic(srcBytes)) {
+            convertHeicToJpeg(srcBytes) ?: throw IllegalArgumentException("Failed to convert HEIC to JPEG for size detection")
+        } else srcBytes
+        val options = BitmapFactory.Options().apply {
+            inJustDecodeBounds = true
+        }
+        BitmapFactory.decodeByteArray(inputBytes, 0, inputBytes.size, options)
+        return ImageSize(options.outWidth, options.outHeight)
+    }
+
+    actual fun hasNonOpaquePixels(srcBytes: ByteArray): Boolean {
+        var bitmap: Bitmap? = null
+        return try {
+            val options = BitmapFactory.Options().apply {
+                inPreferredConfig = Bitmap.Config.ARGB_8888
+            }
+            bitmap = BitmapFactory.decodeByteArray(srcBytes, 0, srcBytes.size, options)
+                ?: return false
+            // Fast path: the bitmap has no alpha channel at all → fully opaque.
+            if (!bitmap.hasAlpha()) return false
+
+            val w = bitmap.width
+            val h = bitmap.height
+            if (w <= 0 || h <= 0) return false
+
+            // Coarse grid (≤ ~ALPHA_PROBE_MAX_SAMPLES) so a huge image stays cheap.
+            val cols = minOf(w, ALPHA_PROBE_GRID)
+            val rows = minOf(h, ALPHA_PROBE_GRID)
+            for (gy in 0 until rows) {
+                val y = (gy.toLong() * (h - 1) / maxOf(1, rows - 1)).toInt()
+                for (gx in 0 until cols) {
+                    val x = (gx.toLong() * (w - 1) / maxOf(1, cols - 1)).toInt()
+                    if ((bitmap.getPixel(x, y) ushr 24) < ALPHA_OPAQUE_THRESHOLD) return true
+                }
+            }
+            // Always include the 4 corners + centre — where cut-out stickers
+            // carry their transparency — in case the grid stepped over them.
+            val probes = intArrayOf(
+                bitmap.getPixel(0, 0),
+                bitmap.getPixel(w - 1, 0),
+                bitmap.getPixel(0, h - 1),
+                bitmap.getPixel(w - 1, h - 1),
+                bitmap.getPixel(w / 2, h / 2),
+            )
+            probes.any { (it ushr 24) < ALPHA_OPAQUE_THRESHOLD }
+        } catch (e: Exception) {
+            Logger.w(throwable = e, tag = "hasNonOpaquePixels") { "Android alpha probe failed" }
+            false
+        } finally {
+            bitmap?.recycle()
+        }
+    }
+
+    /**
+     * Alpha below this counts as non-opaque. 250 (not 255) tolerates the
+     * compression fringe that WebP/PNG lossy re-encode adds to near-opaque
+     * photos, so an ordinary photo isn't misdetected as a transparent sticker.
+     */
+    private const val ALPHA_OPAQUE_THRESHOLD: Int = 250
+
+    /** Grid side length → ALPHA_PROBE_GRID² ≤ ~4096 samples regardless of image size. */
+    private const val ALPHA_PROBE_GRID: Int = 64
+
+    @RequiresApi(Build.VERSION_CODES.R)
+    actual fun warpAffine(
+        srcBytes: ByteArray,
+        matrix9: FloatArray,
+        outputWidth: Int,
+        outputHeight: Int,
+        fillColorArgb: Int,
+        outputFormat: ImageFormat,
+        quality: Int,
+    ): ImageResult {
+        require(matrix9.size >= 9) { "matrix9 must have at least 9 entries" }
+        require(outputWidth > 0 && outputHeight > 0) { "output dimensions must be positive" }
+
+        val srcBitmap = decodeBitmap(srcBytes)
+        val naturalW = srcBitmap.width
+        val naturalH = srcBitmap.height
+
+        val matrix = Matrix().apply { setValues(matrix9) }
+        val out = Bitmap.createBitmap(outputWidth, outputHeight, Bitmap.Config.ARGB_8888)
+        val canvas = android.graphics.Canvas(out)
+        if (fillColorArgb != 0) {
+            canvas.drawColor(fillColorArgb)
+        }
+        val paint = android.graphics.Paint().apply {
+            isAntiAlias = true
+            isFilterBitmap = true
+        }
+        canvas.drawBitmap(srcBitmap, matrix, paint)
+
+        val encoded = encodeBitmap(out, outputFormat, quality)
+        srcBitmap.recycle()
+        out.recycle()
+        return ImageResult(
+            bytes = encoded,
+            naturalSize = ImageSize(naturalW, naturalH),
+            size = ImageSize(outputWidth, outputHeight),
+        )
+    }
+
+    actual fun drawStrokes(
+        srcBytes: ByteArray,
+        strokes: List<StrokeCommand>,
+        outputFormat: ImageFormat,
+        quality: Int,
+    ): ImageResult {
+        val srcBitmap = decodeBitmap(srcBytes)
+        val w = srcBitmap.width
+        val h = srcBitmap.height
+
+        val out = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+        val canvas = android.graphics.Canvas(out)
+        canvas.drawBitmap(srcBitmap, 0f, 0f, null)
+
+        var blurredBitmap: Bitmap? = null
+
+        for (cmd in strokes) {
+            val path = android.graphics.Path()
+            for (pc in cmd.pathCommands) when (pc) {
+                is PathCommand.MoveTo -> path.moveTo(pc.x, pc.y)
+                is PathCommand.LineTo -> path.lineTo(pc.x, pc.y)
+                is PathCommand.CubicTo -> path.cubicTo(pc.c1x, pc.c1y, pc.c2x, pc.c2y, pc.x, pc.y)
+            }
+
+            when (cmd.kind) {
+                StrokeKind.PAINT -> {
+                    val paint = android.graphics.Paint().apply {
+                        isAntiAlias = true
+                        style = android.graphics.Paint.Style.STROKE
+                        strokeJoin = android.graphics.Paint.Join.ROUND
+                        strokeWidth = cmd.thicknessPx
+                        strokeCap = when (cmd.cap) {
+                            StrokeCap.Round -> android.graphics.Paint.Cap.ROUND
+                            StrokeCap.Square -> android.graphics.Paint.Cap.SQUARE
+                        }
+                        color = cmd.colorArgb
+                    }
+                    canvas.drawPath(path, paint)
+                }
+                StrokeKind.BLUR -> {
+                    val blurred = blurredBitmap ?: blurAndroidBitmap(srcBitmap, BLUR_RADIUS).also {
+                        blurredBitmap = it
+                    }
+                    val blurPaint = android.graphics.Paint().apply {
+                        isAntiAlias = true
+                        style = android.graphics.Paint.Style.STROKE
+                        strokeJoin = android.graphics.Paint.Join.ROUND
+                        strokeWidth = cmd.thicknessPx
+                        strokeCap = when (cmd.cap) {
+                            StrokeCap.Round -> android.graphics.Paint.Cap.ROUND
+                            StrokeCap.Square -> android.graphics.Paint.Cap.SQUARE
+                        }
+                        shader = BitmapShader(blurred, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP)
+                    }
+                    canvas.drawPath(path, blurPaint)
+                }
+            }
+        }
+
+        val encoded = encodeBitmap(out, outputFormat, quality)
+        srcBitmap.recycle()
+        out.recycle()
+        blurredBitmap?.recycle()
+        return ImageResult(
+            bytes = encoded,
+            naturalSize = ImageSize(w, h),
+            size = ImageSize(w, h),
+        )
+    }
+
+    actual fun blurBytes(
+        srcBytes: ByteArray,
+        radius: Int,
+        outputFormat: ImageFormat,
+        quality: Int,
+    ): ImageResult {
+        val srcBitmap = decodeBitmap(srcBytes)
+        val blurred = blurAndroidBitmap(srcBitmap, radius)
+        val encoded = encodeBitmap(blurred, outputFormat, quality)
+        val w = srcBitmap.width
+        val h = srcBitmap.height
+        srcBitmap.recycle()
+        blurred.recycle()
+        return ImageResult(
+            bytes = encoded,
+            naturalSize = ImageSize(w, h),
+            size = ImageSize(w, h),
+        )
+    }
+
+    actual fun decodeToArgb(srcBytes: ByteArray): ArgbImage? {
+        // Decode straight (non-premultiplied) alpha so the round-trip is lossless, matching
+        // the Skia actual (which uses Codec for the same reason). BitmapFactory premultiplies
+        // by default: alpha-0 pixels lose their RGB entirely and partial-alpha RGB drifts on
+        // the premul→getPixels(un-premul) round-trip. inPremultiplied=false stores straight
+        // alpha, so getPixels returns every channel exactly as encoded. We only read pixels
+        // here (never draw the bitmap), so the no-hardware-draw constraint on non-premultiplied
+        // bitmaps doesn't apply.
+        val opts = BitmapFactory.Options().apply { inPremultiplied = false }
+        val bmp = BitmapFactory.decodeByteArray(srcBytes, 0, srcBytes.size, opts) ?: return null
+        val argb = if (bmp.config == Bitmap.Config.ARGB_8888) bmp
+            else bmp.copy(Bitmap.Config.ARGB_8888, false).also { bmp.recycle() }
+        val w = argb.width; val h = argb.height
+        val pixels = IntArray(w * h)
+        argb.getPixels(pixels, 0, w, 0, 0, w, h)
+        argb.recycle()
+        return ArgbImage(pixels, w, h)
+    }
+
+    actual fun encodeArgbToPng(image: ArgbImage): ByteArray {
+        val bmp = Bitmap.createBitmap(image.pixels, image.width, image.height, Bitmap.Config.ARGB_8888)
+        val out = ByteArrayOutputStream()
+        bmp.compress(Bitmap.CompressFormat.PNG, 100, out)
+        bmp.recycle()
+        return out.toByteArray()
+    }
+
+    private fun blurAndroidBitmap(src: Bitmap, radius: Int): Bitmap {
+        val w = src.width
+        val h = src.height
+        val pixels = IntArray(w * h)
+        src.getPixels(pixels, 0, w, 0, 0, w, h)
+        stackBlur(pixels, w, h, radius)
+        val out = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+        out.setPixels(pixels, 0, w, 0, 0, w, h)
+        return out
+    }
+
+    private const val BLUR_RADIUS: Int = 25
+
+    @RequiresApi(Build.VERSION_CODES.R)
+    actual suspend fun rasterizeSvg(
+        svgBytes: ByteArray,
+        maxDim: Int,
+        outputFormat: ImageFormat,
+        quality: Int,
+    ): ImageResult {
+        val svg = SVG.getFromInputStream(ByteArrayInputStream(svgBytes))
+
+        // AndroidSVG's documentWidth/Height returns -1 when the SVG only
+        // declares a viewBox. Fall back to the viewBox extents, then to
+        // a 320×320 box. Same approach as the Skiko actuals.
+        val docW = svg.documentWidth.toInt().takeIf { it > 0 }
+        val docH = svg.documentHeight.toInt().takeIf { it > 0 }
+        val viewBox = svg.documentViewBox
+        val (naturalW, naturalH) = when {
+            docW != null && docH != null -> docW to docH
+            viewBox != null && viewBox.width() > 0 && viewBox.height() > 0 ->
+                viewBox.width().toInt() to viewBox.height().toInt()
+            else -> 320 to 320
+        }
+
+        // Vector → always render at exactly the requested maxDim box,
+        // preserving aspect. (calculateTargetDimensions refuses to upscale
+        // — correct for rasters, wrong for vectors.)
+        val scale = maxDim.toFloat() / maxOf(naturalW, naturalH)
+        val targetW = (naturalW * scale).toInt().coerceAtLeast(1)
+        val targetH = (naturalH * scale).toInt().coerceAtLeast(1)
+
+        // Tell AndroidSVG the render container so percentage-sized
+        // elements scale correctly when the SVG is viewBox-only.
+        svg.setDocumentWidth(naturalW.toFloat())
+        svg.setDocumentHeight(naturalH.toFloat())
+
+        val bitmap = Bitmap.createBitmap(targetW, targetH, Bitmap.Config.ARGB_8888)
+        try {
+            val canvas = AndroidCanvas(bitmap)
+            svg.renderToCanvas(canvas, RectF(0f, 0f, targetW.toFloat(), targetH.toFloat()))
+            val bytes = encodeBitmap(bitmap, outputFormat, quality)
+            return ImageResult(
+                bytes = bytes,
+                naturalSize = ImageSize(naturalW, naturalH),
+                size = ImageSize(targetW, targetH),
+            )
+        } finally {
+            bitmap.recycle()
+        }
+    }
+}
+

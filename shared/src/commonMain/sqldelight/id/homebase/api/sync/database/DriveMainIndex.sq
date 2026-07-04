@@ -1,0 +1,187 @@
+import kotlin.uuid.Uuid;
+
+CREATE TABLE IF NOT EXISTS DriveMainIndex( -- Version: 5
+   rowId INTEGER PRIMARY KEY AUTOINCREMENT,
+   identityId BLOB AS Uuid NOT NULL,
+   driveId BLOB AS Uuid NOT NULL,
+   fileId BLOB AS Uuid NOT NULL,
+   uniqueId BLOB AS Uuid,
+   globalTransitId BLOB AS Uuid,
+   senderId TEXT,
+   originalAuthor TEXT,
+   groupId BLOB AS Uuid,
+   fileType INTEGER NOT NULL,
+   dataType INTEGER NOT NULL,
+   archivalStatus INTEGER NOT NULL,
+   -- Canonical soft-delete marker (FileState.{Active=1,Deleted=0}); see
+   -- HomebaseFile.isSoftDeleted() which OR-checks this against archivalStatus.
+   fileState INTEGER NOT NULL,
+   historyStatus INTEGER NOT NULL,
+   userDate INTEGER NOT NULL,
+   created INTEGER NOT NULL,
+   modified INTEGER NOT NULL,
+   fileSystemType INTEGER NOT NULL,
+   jsonHeader TEXT NOT NULL,
+   -- CHECK (fileId IS NOT NULL OR uniqueId IS NOT NULL OR globalTransitId IS NOT NULL),
+
+   UNIQUE(identityId,driveId,fileId),
+   UNIQUE(identityId,driveId,uniqueId),
+   UNIQUE(identityId,driveId,globalTransitId)
+);
+
+CREATE INDEX IF NOT EXISTS Idx0DriveMainIndex ON DriveMainIndex(identityId,driveId,fileSystemType,created,rowId);
+CREATE INDEX IF NOT EXISTS Idx1DriveMainIndex ON DriveMainIndex(identityId,driveId,fileSystemType,modified,rowId);
+CREATE INDEX IF NOT EXISTS Idx2DriveMainIndex ON DriveMainIndex(identityId,driveId,fileSystemType,userDate,rowId);
+CREATE INDEX IF NOT EXISTS Idx3DriveMainIndex ON DriveMainIndex(identityId,driveId,fileSystemType,fileState,groupId,fileType,userDate DESC,rowId);
+-- Relocated from the deleted ChatReadCount.sq: QueryBatch.kt hard-references this index name via
+-- an `INDEXED BY` hint, so it must exist on DriveMainIndex (its real table) even without chat.
+CREATE INDEX IF NOT EXISTS idx_chatmessage_convid_userDate ON DriveMainIndex(groupId,fileType,userDate DESC);
+
+-- Upsert a record
+upsertDriveMainIndex:
+INSERT INTO DriveMainIndex (
+   identityId,driveId,fileId,
+   uniqueId,globalTransitId,
+   groupId,
+   senderId,
+   originalAuthor,
+   fileType,dataType,archivalStatus,fileState,historyStatus,
+   userDate,created,modified,
+   fileSystemType, jsonHeader)
+VALUES (?,
+   ?,?,?,?,?,
+   ?,?,?,?,?,?,?,?,
+   ?,?,?,?)
+
+-- Prefer uniqueId when it is supplied (first clause never fires for NULL)
+ON CONFLICT (identityId, driveId, uniqueId) DO UPDATE
+SET
+    fileId           = excluded.fileId,          -- important: allow fileId to be updated when we matched on uniqueId
+    globalTransitId  = excluded.globalTransitId,
+    groupId          = excluded.groupId,
+    senderId         = excluded.senderId,
+    originalAuthor   = excluded.originalAuthor,
+    fileType         = excluded.fileType,
+    dataType         = excluded.dataType,
+    archivalStatus   = excluded.archivalStatus,
+    fileState        = excluded.fileState,
+    historyStatus    = excluded.historyStatus,
+    userDate         = excluded.userDate,
+    created          = excluded.created,
+    modified         = excluded.modified,
+    fileSystemType   = excluded.fileSystemType,
+    jsonHeader       = excluded.jsonHeader
+WHERE excluded.modified > DriveMainIndex.modified -- Only update if the row is newer. Host guarantees it.
+
+-- Fallback to fileId (also catches the case where uniqueId is NULL)
+ON CONFLICT (identityId,driveId,fileId) DO UPDATE
+SET uniqueId        = excluded.uniqueId,
+    globalTransitId = excluded.globalTransitId,
+    groupId         = excluded.groupId,
+    senderId        = excluded.senderId,
+    originalAuthor  = excluded.originalAuthor,
+    fileType        = excluded.fileType,
+    dataType        = excluded.dataType,
+    archivalStatus  = excluded.archivalStatus,
+    fileState       = excluded.fileState,
+    historyStatus   = excluded.historyStatus,
+    userDate        = excluded.userDate,
+    created         = excluded.created,
+    modified        = excluded.modified,
+    fileSystemType  = excluded.fileSystemType,
+    jsonHeader      = excluded.jsonHeader
+WHERE excluded.modified > DriveMainIndex.modified; -- Only update if the row is newer. Host guarantees it.
+
+-- Select by identity and drive and file (get single row)
+selectByIdentityAndDriveAndFile:
+SELECT * FROM DriveMainIndex
+WHERE identityId = ? AND driveId = ? AND fileId = ?;
+
+-- Select by identity and drive and file (get single row)
+selectByIdentityAndDriveAndUnique:
+SELECT * FROM DriveMainIndex
+WHERE identityId = ? AND driveId = ? AND uniqueId = ?;
+
+-- Batch variant: look up many rows by uniqueId in one round-trip. Used by the
+-- chat overview cold-load to avoid N+1 admin-file queries when mapping each
+-- group conversation.
+selectByIdentityAndDriveAndUniqueIds:
+SELECT * FROM DriveMainIndex
+WHERE identityId = ? AND driveId = ? AND uniqueId IN ?;
+
+-- Select by identity and drive and file (get single row)
+selectByIdentityAndDriveAndGlobal:
+SELECT * FROM DriveMainIndex
+WHERE identityId = ? AND driveId = ? AND globalTransitId = ?;
+
+
+-- Delete all records (for testing)
+deleteAll:
+DELETE FROM DriveMainIndex;
+
+-- Delete all records (for testing)
+deleteBy:
+DELETE FROM DriveMainIndex
+WHERE identityId = ? AND driveId = ? AND fileId = ?;
+
+-- Count all records - for TESTING
+countAll:
+SELECT count(*) FROM DriveMainIndex;
+
+-- Count records for a specific identity + drive (used by Storage settings)
+countByIdentityAndDrive:
+SELECT count(*) FROM DriveMainIndex
+WHERE identityId = ? AND driveId = ?;
+
+-- Page rows for a drive in rowId-ascending order, returning enough columns
+-- for the Defragmenter to (a) apply the HomebaseFile.isSoftDeleted() predicate
+-- (which lives inside jsonHeader, can't be filtered in SQL), and (b) detect
+-- known DriveMainIndex integrity issues without re-reading the row:
+--   * userDate=0 paired with non-null appData.userDate → legacy projection
+--   * archivalStatus mismatched against jsonHeader fileState → soft-delete drift
+-- The deserialised jsonHeader covers (a) and reveals appData.userDate; the SQL
+-- columns cover the projected/stored values so we can tell whether a repair
+-- UPDATE is actually needed.
+selectFileIdAndJsonByDriveSince:
+SELECT rowId, fileId, userDate, archivalStatus, jsonHeader FROM DriveMainIndex
+WHERE identityId = ? AND driveId = ? AND rowId > ?
+ORDER BY rowId
+LIMIT ?;
+
+-- Select all records - for TESTING
+selectAll:
+SELECT * FROM DriveMainIndex;
+
+-- Homebase Photos timeline page: a drive's active rows of one fileType, newest
+-- first by userDate, keyset-paged by a `before` userDate cursor. Pass
+-- beforeUserDate = a very large value (e.g. Long.MAX_VALUE) for the first page,
+-- then the userDate of the last returned row for each subsequent page. Soft-delete
+-- filtering still happens in Kotlin against the deserialised jsonHeader (the
+-- canonical isSoftDeleted() predicate), so this returns Active rows only by
+-- fileState here and the caller drops any remaining archival-removed rows.
+selectPhotosPage:
+SELECT jsonHeader FROM DriveMainIndex
+WHERE identityId = ? AND driveId = ? AND fileType = ? AND fileState = 1
+  AND userDate < ?
+ORDER BY userDate DESC, rowId DESC
+LIMIT ?;
+
+-- Defragmenter: re-project a row's archivalStatus column when the SQL value
+-- has drifted from what the deserialised jsonHeader says (the
+-- SoftDeleteArchivalMismatch case). Local-only — peers maintain their own
+-- projections from their own copies of the file.
+repairArchivalStatusByRowId:
+UPDATE DriveMainIndex SET archivalStatus = ? WHERE rowId = ?;
+
+-- Defragmenter: re-project a row's userDate column from the header's
+-- metadata.created fallback when appData.userDate was null and got stored as 0.
+-- Used by the repair pass to correct LegacyUserDateZero rows. Local-only.
+repairUserDateByRowId:
+UPDATE DriveMainIndex SET userDate = ? WHERE rowId = ?;
+
+-- Defragmenter: rewrite a row's jsonHeader text after we patch
+-- appData.userDate locally (LegacyUserDateZero repair). Local-only —
+-- if the row ever resyncs from the server the original null returns,
+-- which is fine: the classifier will re-flag and re-repair next pass.
+repairJsonHeaderByRowId:
+UPDATE DriveMainIndex SET jsonHeader = ? WHERE rowId = ?;

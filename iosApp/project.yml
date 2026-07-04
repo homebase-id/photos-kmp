@@ -1,0 +1,69 @@
+name: iosApp
+options:
+  bundleIdPrefix: id.homebase
+  deploymentTarget:
+    iOS: "18.2"
+  createIntermediateGroups: true
+
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    # gradle (the framework build script) needs filesystem access outside the sandbox.
+    ENABLE_USER_SCRIPT_SANDBOXING: NO
+
+targets:
+  iosApp:
+    type: application
+    platform: iOS
+    sources:
+      # Recursive: XcodeGen expands this dir to every .swift it contains, including
+      # iosApp/timeline/ (TimelineView.swift, ThumbnailLoader.swift) and ContentView/iOSApp.
+      - path: iosApp
+      - path: Theme
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: id.homebase.photos
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_CFBundleDisplayName: Homebase Photos
+        # Where embedAndSignAppleFrameworkForXcode drops Shared.framework per CONFIGURATION/SDK.
+        FRAMEWORK_SEARCH_PATHS: $(SRCROOT)/../shared/build/xcode-frameworks/$(CONFIGURATION)/$(SDK_NAME)
+        OTHER_LDFLAGS:
+          - "$(inherited)"
+          - "-framework"
+          - "Shared"
+          # Static Shared.framework re-exports its sqliter cinterop symbols; link system SQLite.
+          - "-lsqlite3"
+    preBuildScripts:
+      - name: Build Shared.framework (gradle)
+        # Runs from the Xcode build phase so it inherits CONFIGURATION/SDK_NAME/ARCHS/etc.
+        script: |
+          cd "$SRCROOT/.."
+          ./gradlew :shared:embedAndSignAppleFrameworkForXcode
+        basedOnDependencyAnalysis: false
+
+  iosAppUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      # Recursive: includes MainFlowUITest.swift + TimelineGridUITest.swift.
+      - path: iosAppUITests
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: id.homebase.photos.uitests
+        GENERATE_INFOPLIST_FILE: YES
+    dependencies:
+      - target: iosApp
+
+schemes:
+  iosApp:
+    build:
+      targets:
+        iosApp: all
+        iosAppUITests: [test]
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets:
+        - iosAppUITests

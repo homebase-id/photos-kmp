@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Bare window theme; the Conservatory look is applied in Compose via PhotosTheme. -->
+    <style name="Theme.HomebasePhotos" parent="@android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/conservatory_window_background</item>
+    </style>
+</resources>

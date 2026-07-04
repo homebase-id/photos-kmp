@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Trust the platform CAs as normal, PLUS the bundled ISRG (Let's Encrypt) roots — ISRG Root X1
+  and ISRG Root X2 — so the app validates Let's Encrypt identity certs even on devices whose
+  system trust store is missing them (chat-kmp-proven fix).
+
+  Why: identity certs are genuine Let's Encrypt certs; the newer ECDSA hierarchy
+  (leaf → YE1 → ISRG Root YE) cross-signs up to ISRG Root X2, which OEM-lagged trust stores
+  lack — observed 2026-07-05 on Redmi (Android 11, 2021-11 patch) as
+  "CertPathValidatorException: Trust anchor for certification path not found" against
+  peter.parker.demo.rocks, while Chrome (own root store) works.
+
+  Security: only ADDS two well-known public roots; keeps `system`, does NOT add `user`
+  (no user-installed-CA/MITM loophole). Unlike chat-kmp we omit cleartextTrafficPermitted —
+  this app is HTTPS-only. Roots from https://letsencrypt.org/certs/ (X1 valid to 2035,
+  X2 to 2040), copied byte-identical from chat-kmp's res/raw.
+-->
+<network-security-config>
+    <base-config>
+        <trust-anchors>
+            <certificates src="system" />
+            <certificates src="@raw/isrg_root_x1" />
+            <certificates src="@raw/isrg_root_x2" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

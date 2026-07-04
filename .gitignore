@@ -5,6 +5,13 @@ build/
 local.properties
 *.hprof
 
+# Vendored FFmpegKit iOS xcframework (~154MB). Like chat-kmp, this is NOT tracked —
+# it's a large binary read by the shared iOS-sim test cinterop (shared/build.gradle.kts).
+# Kept locally; re-vendor from the ffmpeg-kit AAR if a fresh clone needs the iOS sim tests.
+shared/libs/
+# Rollback copies beside the ffmpeg-kit AAR (mirror chat-kmp).
+gradle/local-repo/id/homebase/libs/ffmpeg-kit/1.0/ffmpeg-kit-1.0.aar.*.bak
+
 # IDE
 .idea/
 *.iml

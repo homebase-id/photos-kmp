@@ -1,0 +1,146 @@
+import kotlin.uuid.Uuid;
+
+CREATE TABLE IF NOT EXISTS Outbox(
+   rowId INTEGER PRIMARY KEY AUTOINCREMENT,
+   driveId BLOB AS Uuid NOT NULL,
+   uniqueId BLOB AS Uuid NOT NULL,
+   dependencyUniqueId BLOB AS Uuid,
+   priority INTEGER NOT NULL,
+   lastAttempt INTEGER NOT NULL, -- UnixTimeUtc
+   nextRunTime INTEGER NOT NULL, -- UnixTimeUtc
+   checkOutCount INTEGER NOT NULL,
+   checkOutStamp INTEGER UNIQUE, -- Allow NULL
+   uploadType INTEGER NOT NULL,
+   json BLOB NOT NULL,
+   files BLOB,
+
+   UNIQUE(driveId,uniqueId)
+);
+
+-- Insert into outbox
+insert:
+INSERT INTO Outbox(driveId, uniqueId, dependencyUniqueId, priority, lastAttempt, nextRunTime, checkOutCount, checkOutStamp, uploadType,json,files)
+VALUES (?,?, ?, ?, ?, ?, ?, ?,?, ?, ?);
+
+
+-- Checkout for sending
+checkout:
+UPDATE Outbox
+SET checkOutStamp=:checkOutStamp
+WHERE checkOutStamp IS NULL AND
+    rowId = (
+    SELECT rowId
+    FROM Outbox AS o
+    WHERE o.checkOutStamp IS NULL
+        AND o.nextRunTime <= :now
+        AND ((o.dependencyUniqueId IS NULL)
+            OR (NOT EXISTS (
+                  SELECT 1
+                  FROM Outbox AS ib
+                  WHERE ib.uniqueId = o.dependencyUniqueId)
+        )
+    )
+    ORDER BY o.priority ASC, o.nextRunTime ASC
+    LIMIT 1
+)
+RETURNING rowId, driveId, uniqueId, dependencyUniqueId, priority, lastAttempt, nextRunTime, checkOutCount, checkOutStamp, uploadType, json, files;
+
+-- What's the lowest timestamp of the next item to process in the outbox?
+nextScheduled:
+SELECT nextRunTime
+FROM Outbox AS o
+WHERE o.checkOutStamp IS NULL
+    AND (
+        (o.dependencyUniqueId IS NULL)
+        OR (NOT EXISTS (
+              SELECT 1
+              FROM Outbox AS ib
+              WHERE ib.uniqueId = o.dependencyUniqueId
+        ))
+    )
+ORDER BY o.priority ASC, o.nextRunTime ASC
+LIMIT 1;
+
+
+-- Checkin as failed (when sending didn't work)
+checkInFailed:
+UPDATE Outbox
+SET checkOutStamp=NULL,
+    checkOutCount=checkOutCount+1,
+    nextRunTime=:nextRunTime
+WHERE checkOutStamp=:checkOutStamp;
+
+-- Force a queued row's next attempt (e.g. "Try now" resetting a backed-off
+-- item to run immediately). Guarded on checkOutStamp IS NULL: an in-flight
+-- row's nextRunTime is owned by checkInFailed and must not be raced.
+setNextRunTime:
+UPDATE Outbox
+SET nextRunTime = :nextRunTime
+WHERE driveId = :driveId AND uniqueId = :uniqueId AND checkOutStamp IS NULL;
+
+-- When the app starts, clear all checked out items
+clearCheckedOut:
+UPDATE Outbox
+SET checkOutStamp=NULL,
+    checkOutCount=checkOutCount+1,
+    nextRunTime=42 -- re-run as soon as possible
+WHERE checkOutStamp IS NOT NULL;
+
+-- Delete a row by rowId
+deleteByRowId:
+DELETE FROM Outbox
+WHERE rowId = ?;
+
+-- Delete a row by driveId,uniqueId
+deleteBy:
+DELETE FROM Outbox
+WHERE driveId = ? AND uniqueId = ?;
+
+-- Cancel a queued row ONLY when no worker holds it. Deleting a checked-out
+-- row does NOT stop its upload (the worker already read the row) — it just
+-- makes the cancel a silent lie while the message still ships. Callers that
+-- need cancellation use this guarded form via OutboxSync.cancelPending and
+-- get an explicit InFlight answer instead.
+deleteByIfNotCheckedOut:
+DELETE FROM Outbox
+WHERE driveId = ? AND uniqueId = ? AND checkOutStamp IS NULL;
+
+
+-- Select the (single, by UNIQUE(driveId,uniqueId)) pending row for a message.
+-- Lets a caller tell a queued create apart from a queued edit before deleting.
+selectByDriveAndUnique:
+SELECT rowId,driveId,uniqueId,dependencyUniqueId,priority,lastAttempt,nextRunTime,checkOutCount,checkOutStamp,uploadType,json,files
+FROM Outbox
+WHERE driveId = ? AND uniqueId = ?;
+
+-- Does ANY outbox row still exist for this uniqueId (across drives)? Message
+-- Info uses it to tell whether a queued message is still waiting on an earlier
+-- message — its dependencyUniqueId row hasn't drained yet — which is the same
+-- existence condition the checkout dependency gate (nextScheduled) applies.
+existsByUniqueId:
+SELECT COUNT(*) FROM Outbox WHERE uniqueId = ?;
+
+-- The single row for a uniqueId (across drives), to walk a dependency chain:
+-- given a dependencyUniqueId, fetch that row's own driveId/dependencyUniqueId/
+-- state so Message Info can report the blocker and "Try now" can resolve it.
+-- Outbox is UNIQUE(driveId,uniqueId); a uniqueId on >1 drive is not expected, so
+-- LIMIT 1 is safe.
+selectByUniqueId:
+SELECT rowId,driveId,uniqueId,dependencyUniqueId,priority,lastAttempt,nextRunTime,checkOutCount,checkOutStamp,uploadType,json,files
+FROM Outbox
+WHERE uniqueId = ?
+LIMIT 1;
+
+-- Select checked out item
+selectCheckedOut:
+SELECT rowId,driveId,uniqueId,dependencyUniqueId,priority,lastAttempt,nextRunTime,checkOutCount,checkOutStamp,uploadType,json,files
+FROM Outbox
+WHERE checkOutStamp = ?;
+
+-- Get count
+count:
+SELECT count(*) FROM Outbox;
+
+-- Wipe the entire table (used on logout).
+deleteAll:
+DELETE FROM Outbox;
