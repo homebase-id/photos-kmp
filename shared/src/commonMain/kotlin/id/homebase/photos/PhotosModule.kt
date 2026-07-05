@@ -8,6 +8,8 @@ import id.homebase.api.sync.DriveSyncManager
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.youauth.YouAuthFlowManager
 import id.homebase.core.image.HomebaseImageLoader
+import id.homebase.photos.albums.AlbumDetailViewModel
+import id.homebase.photos.albums.AlbumsViewModel
 import id.homebase.photos.auth.AuthGateway
 import id.homebase.photos.auth.LoginViewModel
 import id.homebase.photos.auth.YouAuthGateway
@@ -19,8 +21,11 @@ import id.homebase.photos.backup.BackupViewModel
 import id.homebase.photos.backup.OutboxPhotoUploadEnqueuer
 import id.homebase.photos.backup.PhotoFileBuilder
 import id.homebase.photos.backup.PhotoUploadEnqueuer
+import id.homebase.photos.data.AlbumsRepository
+import id.homebase.photos.data.AlbumsRepositoryImpl
 import id.homebase.photos.data.PhotosRepository
 import id.homebase.photos.data.PhotosRepositoryImpl
+import id.homebase.photos.domain.AlbumItem
 import id.homebase.photos.domain.PhotoItem
 import id.homebase.photos.timeline.TimelineViewModel
 import kotlin.uuid.Uuid
@@ -45,10 +50,22 @@ val photosModule = module {
             databaseManager = get(),
             credentialsManager = get(),
             imageLoader = get(),
+            driveFileProvider = get(),
         )
     }
 
-    factory { TimelineViewModel(get()) }
+    factory { TimelineViewModel(get(), get()) } // eventBus: sync-completion reload
+
+    // Albums: files off the local index, membership via server queryBatch (both apiModule deps).
+    single<AlbumsRepository> {
+        AlbumsRepositoryImpl(
+            driveId = Uuid.parseHex(PhotoConfig.DRIVE_ALIAS),
+            databaseManager = get(),
+            credentialsManager = get(),
+            driveQueryProvider = get(),
+        )
+    }
+    factory { AlbumsViewModel(get()) }
 
     // Sync engine backing YouAuthFlowManager. single because its authState-driven mount
     // must survive across the login screen and root gate (one instance, one driveStatuses).
@@ -149,6 +166,13 @@ fun timelineViewModel(): TimelineViewModel = KoinPlatform.getKoin().get()
 
 /** iOS-callable factory: resolves the login ViewModel from Koin (Swift has no DSL). */
 fun loginViewModel(): LoginViewModel = KoinPlatform.getKoin().get()
+
+/** iOS-callable factory: resolves the albums ViewModel from Koin (Swift has no DSL). */
+fun albumsViewModel(): AlbumsViewModel = KoinPlatform.getKoin().get()
+
+/** iOS-callable factory: album detail VM for [album] over the shared repository. */
+fun albumDetailViewModel(album: AlbumItem): AlbumDetailViewModel =
+    AlbumDetailViewModel(album, KoinPlatform.getKoin().get())
 
 /** iOS-callable: the shared auth manager whose .authState the root session gate observes. */
 fun youAuthFlowManager(): YouAuthFlowManager = KoinPlatform.getKoin().get()

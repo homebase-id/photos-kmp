@@ -48,7 +48,8 @@ class MockPhotosRepository(
     // userDate DESC, newest first. Walk calendar days back from the anchor emitting
     // COUNTS[day] shots per day, ~7 min apart within a day (descending, so the whole
     // list stays strictly userDate DESC), until seedCount items exist.
-    private val all: List<PhotoItem> = buildList {
+    // var: deletePhotos shrinks the seed like a real drive would.
+    private var all: List<PhotoItem> = buildList {
         val oneDayMs = 24L * 60 * 60 * 1000
         val stepMs = 7L * 60 * 1000 // ~7 min between shots in the same day
         var index = 0
@@ -88,6 +89,13 @@ class MockPhotosRepository(
 
     override suspend fun sync() {
         // No-op: the mock is already "synced".
+    }
+
+    override suspend fun deletePhotos(fileIds: List<Uuid>): Boolean {
+        val doomed = fileIds.toSet()
+        all = all.filterNot { it.fileId in doomed }
+        _photos.value = all
+        return true
     }
 
     @OptIn(ExperimentalEncodingApi::class)

@@ -9,6 +9,8 @@
     <!-- WorkManager runs the expedited backup pass as a foreground service on API &lt; 31. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <!-- Content-trigger jobs don't survive reboot; the boot receiver re-arms the media watch. -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <application
         android:name=".PhotosApp"
@@ -22,6 +24,7 @@
             android:name=".MainActivity"
             android:exported="true"
             android:launchMode="singleTask"
+            android:screenOrientation="portrait"
             android:theme="@style/Theme.HomebasePhotos">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -35,6 +38,14 @@
                 <data android:scheme="homebase-photos" />
             </intent-filter>
         </activity>
+
+        <service
+            android:name=".work.MediaWatchJobService"
+            android:permission="android.permission.BIND_JOB_SERVICE"
+            android:exported="false" />
+        <receiver android:name=".work.BootCompletedReceiver" android:exported="false">
+            <intent-filter><action android:name="android.intent.action.BOOT_COMPLETED" /></intent-filter>
+        </receiver>
     </application>
 
 </manifest>

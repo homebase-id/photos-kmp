@@ -7,9 +7,18 @@ import XCTest
 /// gate. They stop short of tapping submit, which would open a real `ASWebAuthenticationSession`
 /// consent sheet.
 final class LoginScreenUITest: XCTestCase {
-    func testLoginScreenRendersOnFreshInstall() {
+    /// A simulator with a stored session boots straight into the tabbed home — the login screen
+    /// is unreachable, so skip (a fresh install still runs the full assertions).
+    private func skipIfLoggedIn(_ app: XCUIApplication) throws {
+        if app.tabBars.firstMatch.waitForExistence(timeout: 5) {
+            throw XCTSkip("Stored session present — login screen not reachable on this simulator.")
+        }
+    }
+
+    func testLoginScreenRendersOnFreshInstall() throws {
         let app = XCUIApplication()
         app.launch()
+        try skipIfLoggedIn(app)
 
         // The login root sits on a drawn ZStack carrying the id (same lesson as timeline-root:
         // a non-drawing container would be collapsed out of the AX tree).
@@ -29,9 +38,10 @@ final class LoginScreenUITest: XCTestCase {
         )
     }
 
-    func testSubmitEnablesAfterTypingIdentity() {
+    func testSubmitEnablesAfterTypingIdentity() throws {
         let app = XCUIApplication()
         app.launch()
+        try skipIfLoggedIn(app)
 
         let field = app.textFields["login-id-field"]
         XCTAssertTrue(field.waitForExistence(timeout: 15), "Homebase ID field did not render")

@@ -75,16 +75,8 @@ private val CHROME_BAND_HEIGHT: Dp = 120.dp
 // Viewer date label ("Jun 21, 2026") — UTC, matching the grid's cell label.
 private val VIEWER_DATE_FORMATTER = DateTimeFormatter.ofPattern("MMM d, yyyy")
 
-// Deterministic earthy gradient behind a cold page so it never flashes black before bytes arrive
-// (parallels the grid's PLACEHOLDER_GRADIENTS).
-private val VIEWER_GRADIENTS: List<Pair<Color, Color>> = listOf(
-    Color(0xFF3C4D30) to Color(0xFF1B2815),
-    Color(0xFF42432F) to Color(0xFF24251A),
-    Color(0xFF272A1E) to Color(0xFF14160F),
-    Color(0xFF2A2D21) to Color(0xFF191B13),
-    Color(0xFF2F3225) to Color(0xFF1D1F16),
-    Color(0xFF22241A) to Color(0xFF0E0F0A),
-)
+// Flat neutral behind a cold page so it reads as loading, not a hard black flash.
+private val VIEWER_PLACEHOLDER = Color(0xFF2A2A2A)
 
 /**
  * Full-screen pager viewer (spec §5.3, MVP scope). Renders [items] paged from [initialIndex] over a
@@ -120,7 +112,7 @@ fun ViewerScreen(
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.scrim) // warm near-black viewer ground (§5.3)
+            .background(MaterialTheme.colorScheme.scrim) // neutral near-black viewer ground (§5.3)
             .testTag("viewer-root"),
     ) {
         HorizontalPager(
@@ -145,7 +137,7 @@ fun ViewerScreen(
     }
 }
 
-/** One page: gradient + blurred preview beneath, progressive [AsyncImage] on top, play glyph for video. */
+/** One page: flat fill + blurred preview beneath, progressive [AsyncImage] on top, play glyph for video. */
 @Composable
 private fun ViewerPage(
     photo: PhotoItem,
@@ -154,9 +146,6 @@ private fun ViewerPage(
 ) {
     val context = LocalContext.current
     val placeholder = remember(photo.fileId) { decodeBlurPlaceholder(photo.previewPlaceholder) }
-    val gradient = remember(photo.fileId) {
-        VIEWER_GRADIENTS[photo.fileId.hashCode().mod(VIEWER_GRADIENTS.size)]
-    }
     val dateLabel = remember(photo.userDate) { formatDate(photo.userDate) }
 
     // Frame-0 seed: the grid thumb's memory-cache key. Same params the grid used; the keyer is
@@ -175,7 +164,7 @@ private fun ViewerPage(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Brush.verticalGradient(listOf(gradient.first, gradient.second)))
+            .background(VIEWER_PLACEHOLDER)
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null, // no ripple over a photo

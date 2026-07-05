@@ -51,6 +51,8 @@ final class TimelineModel: ObservableObject {
                 guard let self else { return }
                 if let err = e as? TimelineEventError {
                     self.handleError(err.message)
+                } else if let deleted = e as? TimelineEventDeleted {
+                    self.showToast("\(deleted.count) deleted")
                 }
             }
         }
@@ -90,15 +92,20 @@ final class TimelineModel: ObservableObject {
     private func handleError(_ message: String) {
         // Content on screen → transient toast; empty screen → persistent error state.
         if let s = uiState, !s.sections.isEmpty {
-            toastMessage = message
-            toastHideTask?.cancel()
-            toastHideTask = Task { [weak self] in
-                try? await Task.sleep(nanoseconds: 4_000_000_000)
-                guard !Task.isCancelled else { return }
-                self?.toastMessage = nil
-            }
+            showToast(message)
         } else {
             loadError = message
+        }
+    }
+
+    /// Transient bottom capsule (auto-hides after 4s; a newer toast restarts the clock).
+    private func showToast(_ message: String) {
+        toastMessage = message
+        toastHideTask?.cancel()
+        toastHideTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 4_000_000_000)
+            guard !Task.isCancelled else { return }
+            self?.toastMessage = nil
         }
     }
 

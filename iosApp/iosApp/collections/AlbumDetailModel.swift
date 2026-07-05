@@ -1,0 +1,49 @@
+import SwiftUI
+import Foundation
+import Shared
+
+/// Owns the shared `AlbumDetailViewModel` for one album across SwiftUI struct re-inits and
+/// derives the month → day groups the grid renders (same `@StateObject` + SKIE `for await`
+/// pattern as `TimelineModel`; day grouping reuses its `groupDays`).
+@MainActor
+final class AlbumDetailModel: ObservableObject {
+    let vm: AlbumDetailViewModel
+
+    /// nil until the first shared emission — avoids constructing an AlbumDetailUiState in Swift.
+    @Published private(set) var uiState: AlbumDetailUiState?
+    /// Month sections, each carrying its day groups. Recomputed on each state emission.
+    @Published private(set) var monthSections: [TimelineMonth] = []
+    /// Index into `photos` of the item the fullscreen viewer is showing; nil = closed.
+    @Published var viewerIndex: Int?
+
+    private var observeTask: Task<Void, Never>?
+
+    init(album: AlbumItem) {
+        vm = PhotosModuleKt.albumDetailViewModel(album: album)
+    }
+
+    /// Idempotent: wires the state subscription exactly once.
+    func start() {
+        guard observeTask == nil else { return }
+        let states = vm.state
+        observeTask = Task { [weak self] in
+            for await s in states {
+                guard let self else { return }
+                self.uiState = s
+                self.monthSections = TimelineModel.groupDays(s.sections)
+            }
+        }
+    }
+
+    /// Open the fullscreen viewer at `item`'s position in the album's flat pager list.
+    func showViewer(for item: PhotoItem) {
+        let items = uiState?.photos ?? []
+        if let idx = items.firstIndex(where: { $0.fileId.description == item.fileId.description }) {
+            viewerIndex = idx
+        }
+    }
+
+    deinit {
+        observeTask?.cancel()
+    }
+}

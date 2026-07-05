@@ -26,17 +26,21 @@ import id.homebase.photos.auth.LoginEvent
 import id.homebase.photos.auth.LoginViewModel
 import id.homebase.photos.backup.BackupManager
 import id.homebase.photos.backup.BackupViewModel
+import id.homebase.photos.domain.PhotoItem
 import id.homebase.photos.timeline.TimelineEvent
 import id.homebase.photos.timeline.TimelineViewModel
 import id.homebase.photos.android.ui.backup.BackupStatusCard
 import id.homebase.photos.android.work.BackupScheduler
 import id.homebase.photos.android.ui.buildHomebaseImageLoader
+import id.homebase.photos.android.ui.home.HomeScreen
 import id.homebase.photos.android.ui.login.LoginScreen
 import id.homebase.photos.android.ui.theme.PhotosTheme
-import id.homebase.photos.android.ui.timeline.TimelineScreen
 import id.homebase.photos.android.ui.viewer.ViewerScreen
 import kotlinx.coroutines.launch
 import org.koin.core.context.GlobalContext
+
+/** Album-detail viewer request: a snapshot of the album's flat photo list + the tapped index. */
+private data class AlbumViewerRequest(val photos: List<PhotoItem>, val index: Int)
 
 class MainActivity : ComponentActivity() {
 
@@ -74,14 +78,18 @@ class MainActivity : ComponentActivity() {
 
                         val state by vm.state.collectAsStateWithLifecycle()
                         val snackbarHostState = remember { SnackbarHostState() }
-                        // Viewer overlay index into pagedItems; null = closed (plan 004 §A2).
+                        // Timeline viewer overlay index into pagedItems; null = closed (plan 004 §A2).
                         var viewerIndex by remember { mutableStateOf<Int?>(null) }
+                        // Album viewer overlay — pages the album's own flat list (round-1 plan A4).
+                        var albumViewer by remember { mutableStateOf<AlbumViewerRequest?>(null) }
 
                         // One-time events → transient snackbars (design: events on a separate SharedFlow).
                         LaunchedEffect(vm) {
                             vm.events.collect { event ->
                                 when (event) {
                                     is TimelineEvent.Error -> snackbarHostState.showSnackbar(event.message)
+                                    is TimelineEvent.Deleted ->
+                                        snackbarHostState.showSnackbar("${event.count} deleted")
                                 }
                             }
                         }
@@ -100,8 +108,8 @@ class MainActivity : ComponentActivity() {
                             }
                         }
 
-                        TimelineScreen(
-                            state = state,
+                        HomeScreen(
+                            timelineViewModel = vm,
                             imageLoader = imageLoader,
                             snackbarHostState = snackbarHostState,
                             onPhotoClick = { photo ->
@@ -109,9 +117,9 @@ class MainActivity : ComponentActivity() {
                                     .indexOfFirst { it.fileId == photo.fileId }
                                     .takeIf { it >= 0 }
                             },
-                            onLoadMore = vm::loadMore,
-                            onRefresh = vm::refresh,
-                            onRetry = vm::refresh,
+                            onOpenAlbumPhoto = { photos, index ->
+                                albumViewer = AlbumViewerRequest(photos, index)
+                            },
                             // Logout runs in lifecycleScope (survives the recomposition the authState
                             // flip triggers); the root gate above then swaps back to the login screen.
                             onLogout = { lifecycleScope.launch { youAuth.logout() } },
@@ -130,6 +138,15 @@ class MainActivity : ComponentActivity() {
                                 initialIndex = idx,
                                 imageLoader = imageLoader,
                                 onDismiss = { viewerIndex = null },
+                            )
+                        }
+                        // Album viewer pages the tapped album's snapshot (round-1 plan A4).
+                        albumViewer?.let { request ->
+                            ViewerScreen(
+                                items = request.photos,
+                                initialIndex = request.index,
+                                imageLoader = imageLoader,
+                                onDismiss = { albumViewer = null },
                             )
                         }
                     }

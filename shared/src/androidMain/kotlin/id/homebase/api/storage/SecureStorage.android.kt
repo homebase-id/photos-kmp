@@ -109,6 +109,11 @@ actual object SecureStorage {
         return try {
             decrypt(encryptedValue)
         } catch (e: Exception) {
+            // Auto-Backup restores ciphertext but reinstall kills its Keystore key — then
+            // contains()=true, get()=null, and the session drops silently. Make it loud.
+            co.touchlab.kermit.Logger.w(tag = "SecureStorage") {
+                "decrypt failed for '$key' (stale Keystore key after reinstall?): ${e.message}"
+            }
             null
         }
     }

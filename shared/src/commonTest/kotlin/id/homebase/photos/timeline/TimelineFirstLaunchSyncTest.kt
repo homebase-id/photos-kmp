@@ -38,6 +38,8 @@ class TimelineFirstLaunchSyncTest {
             syncCalls++
         }
 
+        override suspend fun deletePhotos(fileIds: List<Uuid>): Boolean = true
+
         override suspend fun loadThumbnailBytes(item: PhotoItem, maxDim: Int): ByteArray? = null
     }
 

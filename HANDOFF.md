@@ -1,118 +1,110 @@
 # Homebase Photos — Handoff
 
 **For:** a fresh Claude Code session opened in `~/Documents/GitHub/homebase-photos`.
-**Date:** 2026-06-21
-**Status:** Design approved + committed. Nothing built yet. Next step = **Batch 0** implementation plan.
+**Updated:** 2026-07-05 ~04:00 (keep this file current — owner directive: refresh it at the end of every finishing run).
+**Status:** MVP committed (`b256602` on `photos-mvp`) + **Google Photos Round 1 implemented, verified, UNCOMMITTED** in the working tree.
 
 ---
 
 ## What this is
 
-A native (SwiftUI + Jetpack Compose) Google-Photos-class app on the Homebase/Odin protocol,
-reusing `chat-kmp`'s `homebase-api` (copied + adapted). Built in batches; MVP first.
+A native (SwiftUI + Jetpack Compose) Google-Photos-class app on the Homebase/Odin protocol over a
+copied headless `homebase-api` KMP layer. Full design: `docs/superpowers/specs/2026-06-21-homebase-photos-design.md`.
+Round 1 plan (what the current working tree implements): `docs/superpowers/plans/2026-07-05-google-photos-round1.md`.
 
-**Read the full design first — do not re-derive it:**
-[`docs/superpowers/specs/2026-06-21-homebase-photos-design.md`](docs/superpowers/specs/2026-06-21-homebase-photos-design.md)
+## Current state (2026-07-05 early morning)
 
-The spec has the locked decisions, the data format, the batch roadmap, and the risks. This handoff
-only adds orientation + reference paths the spec doesn't repeat.
+**Committed (b256602):** YouAuth login, DriveSync timeline (paginated, month/day headers), encrypted
+Coil/ThumbnailLoader pipeline, fullscreen viewer, folder-selective backup (MediaStoreCrawler → dedup
+ledger → PhotoFileBuilder per-payload-IV → outbox), 6h WorkManager periodic, both native UIs.
+Device-verified 2026-07-04 on iPhone 17 sim + Redmi Note 5 Pro.
 
----
+**In the working tree (Round 1, verified but not committed — owner commits after review):**
+- **Shared (TDD, commonTest):** timeline multi-select (`selectedIds`/`inSelectionMode`/`isSelected`),
+  batch delete (`PhotosRepository.deletePhotos` → `DriveFileProvider.deleteFiles`; not-found counts
+  as deleted), albums read path (`AlbumItem`/`AlbumMapper`/`AlbumsRepository`: local index
+  fileType 900 + server `queryBatch` tag filter for members), `AlbumsViewModel` (+cover resolution),
+  `AlbumDetailViewModel`, iOS factories `albumsViewModel()`/`albumDetailViewModel(album)`.
+  Refresh resilience: `CancellationException` always rethrown, failed reload never wipes content
+  (`TimelineRefreshResilienceTest`).
+- **Android:** `ui/components/` package (PhotoGridCell/SectionHeaders/GridStates/TopBars/
+  HomeBottomBar/AlbumCard), Material You dynamic color (SDK 31+, earthy fallback), selection mode +
+  delete confirm, HomeScreen bottom nav (Photos/Collections), CollectionsScreen, AlbumDetailScreen,
+  4 new compose androidTest files.
+- **iOS:** `components/` group (PhotoCell/SectionHeaders/GridStates/SelectionTopBar/AlbumCard),
+  HomeTabView, CollectionsView + AlbumDetailView (+models), selection mode + delete **alert**,
+  2 new XCUITest files. Project is **XcodeGen-managed** — run `xcodegen generate` in `iosApp/`
+  after adding files.
+- **Android event-driven backup:** `MediaWatchScheduler`/`MediaWatchJobService` (JobScheduler
+  id 4243, `addTriggerContentUri` images+video, 5s/30s delays, self re-arm), `BootCompletedReceiver`,
+  enabled-flag gate in `BackupWorker`, app-start re-arm in `PhotosApp`. 6h periodic kept as net.
 
-## Start here (Batch 0 — the skeleton, its own batch, non-negotiable)
+**Verification (2026-07-05):** `:shared:jvmTest` 1015 green · `:androidApp:assembleDebug` +
+46/46 `connectedDebugAndroidTest` on the Redmi · iOS xcodebuild green · XCUITests 5 pass /
+4 designed skips. iOS device QA: tabs, collections, selection, delete-alert, refresh — all pass.
 
-Goal: prove "true native UI over a copied headless Kotlin layer" builds and renders on **both**
-platforms before any feature exists. Do NOT skip ahead to features.
+## Blockers / owner actions
 
-1. Scaffold `homebase-photos` repo: `shared` (KMP: android + iosArm64 + iosSimulatorArm64),
-   `androidApp` (Compose), `iosApp` (SwiftUI). Trimmed Gradle + version catalog copied from chat-kmp.
-2. `shared` = **copy** `homebase-api`; drop `ChatReadCount.sq`; strip the `fileType 7878/8888`
-   guards; add `PhotoConfig` (drive GUIDs + fileTypes + `dflt_key` + thumb sizes). Make it compile →
-   AAR + xcframework.
-3. Wire **SKIE**; prove a `StateFlow` + a `suspend` fn consume cleanly from a SwiftUI test view.
-4. Koin boots in `shared`; Android(Compose) AND iOS(SwiftUI) each render one shared `StateFlow`.
-5. Image-pipeline harness: copy the encrypted Coil fetcher/decoder; throwaway screen decoding N
-   encrypted thumbnails (validate decode + cache + prefetch early — this is where GPhotos perf lives).
-6. Bare auth: `YouAuthFlowManager` login proven both sides.
-7. Verify `queryBatch` tag-filtering works (albums depend on it); pin the photo-vs-video marker.
+1. **Redmi lost its login session** — the instrumented-test run reinstalled the app, killing the
+   Android Keystore key; Auto-Backup restored ciphertext that can no longer decrypt →
+   `hasStoredCredentials()`=true but silent fall-through to login. **Owner must re-login on the
+   Redmi**, then run: Android visual QA, the event-backup latency test (push jpg into
+   `/sdcard/DCIM/Camera` + `MEDIA_SCANNER_SCAN_FILE` → upload ≤ ~35s), and cross-device
+   create→sync→delete.
+2. MIUI battery optimization may throttle the JobScheduler trigger / BOOT_COMPLETED on the Redmi —
+   whitelist the app in MIUI battery settings for reliable seconds-later backup.
 
-**Before writing code, invoke the `superpowers:writing-plans` skill** to turn the spec's Batch 0
-into a concrete, reviewable plan. Then `superpowers:using-git-worktrees` / `executing-plans` to run it.
+## Next roadmap slices (deferred from Round 1 deliberately)
 
----
+Album create/rename/add-photos (needs header-update/tag-write path) → share → favorites/archive/
+trash → search + month scrubber (Batch 3) → video playback (riskiest, last) → iOS event-driven
+backup (PHPhotoLibraryChangeObserver + BGProcessingTask).
 
-## Locked facts (don't re-litigate — see spec for the why)
+## Gotchas (new ones first — older ones still apply)
 
-- **UI:** SwiftUI (iOS) + Jetpack Compose (Android). Shared Kotlin is **headless** — stops at
-  `StateFlow<UiState>`. Views are native and duplicate nothing but rendering.
-- **Protocol:** copy + adapt `homebase-api`. It has **zero** deps on chat/UI modules — clean copy.
-- **iOS interop:** SKIE (`Flow`→`AsyncSequence`, `suspend`→`async`). It is NOT DI.
-- **DI:** Koin (runs inside the framework; iOS calls exposed factories).
-- **Grid:** declarative first (`LazyVerticalGrid` / `LazyVGrid`). Drop to `RecyclerView` /
-  `UICollectionView` ONLY if on-device profiling proves it. Spend perf budget on the **Coil image
-  pipeline**, not the layout framework.
-- **Drive:** `type = 2af68fe72fb84896f39f97c59d60813a`, `alias = 6483b7b1f71bd43eb6896c86148668cc`.
-- **File format:** match the existing Odin Photos format (spec §4). Photo = `fileType 0`,
-  `dataType 0`, payload key `dflt_key`, thumbnails webp `15×20 / 225×300 / 900×1200`, inline
-  `previewThumbnail` placeholder, `userDate` = EXIF capture millis. Album = `fileType 900` + a tag.
-- **Legacy files:** ignored. We write fresh files; no migration.
+- **M3 `surfaceTint` defaults to primary** — any tonal-elevated surface (NavigationBar, cards) gets
+  accent-tinted. GPhotos-pure grounds need `surfaceTint = surface` in every scheme incl. dynamic `.copy`.
+- **iOS `.refreshable` tasks die before the reload step** (synthetic and possibly real pulls) — the
+  timeline now self-reconciles via `EventBus DriveEvent.Stopped → reloadNewestIfIdle()` in
+  TimelineViewModel; don't remove it. Cross-device latency proven: new Android photo → visible on
+  iOS in seconds (upload itself ~7s from MediaStore scan).
+- **2026-07-05 later session:** full GPhotos visual parity landed (white/black surfaces, Google-blue
+  fallback accents, GPhotos headers, portrait locked both platforms). Design contract lives in the
+  gphotos-visual-parity workflow script + design-direction memory.
 
----
+- **Running `connectedDebugAndroidTest` on the Redmi wipes the login session** (reinstall kills the
+  Keystore key). Prefer an emulator for instrumented runs, or expect to re-login after.
+- **iOS 26 `confirmationDialog` renders with no visible Cancel** — use `.alert` for destructive
+  confirms (done for delete).
+- **iOS 26 AX id shadowing:** `.accessibilityElement(children: .contain)` + `accessibilityIdentifier`
+  on a single-AX-child view collapses onto the child and the outer id erases the inner one. Put
+  container ids on a drawn layer (see timeline/collections root fixes).
+- **Kotlin/Native stale incremental-link cache** can fail the Xcode "Build Shared.framework" phase
+  (`No module deserializer for FUN ...`): run `./gradlew :shared:linkDebugFrameworkIosSimulatorArm64`
+  once to rebuild the cache.
+- **Test event collection:** collect VM SharedFlows via test-scope `launch` + `advanceUntilIdle()`
+  BEFORE acting, `collector.cancel()` at the end (no-replay flows drop unobserved emissions;
+  `backgroundScope` collectors proved unreliable here).
+- Known a11y debt (report 2026-07-05): iOS viewer `fullScreenCover` hides its own AX tree
+  (VoiceOver can't reach viewer controls); tab-bar SF Symbol glyphs surface as phantom AXTextFields.
+- Payload-key regex `^[a-z0-9_]{8,10}$`; byte-for-byte original upload; per-payload IV (never the
+  file keyHeader IV); iOS FFmpegKit serial-queue + never `CODE_SIGNING_ALLOWED=NO`; Android webp
+  encode `@RequiresApi(30)` risk; PHAssetResourceManager for iOS video; `stateIn` cache-seed;
+  `-lsqlite3` in OTHER_LDFLAGS; drive GUIDs dashed via `Uuid.toString()`, never bare hex;
+  appId always `32f0bdbf-017f-4fc0-8004-2d4631182d1e`; drift pin `chat-kmp e67130cd`.
 
-## Reference paths (read, don't reinvent)
+## Reference paths
 
 | What | Where |
 |---|---|
-| **The copy source** (protocol layer) | `~/Documents/GitHub/chat-kmp/homebase-api/` |
-| iOS framework export pattern | `chat-kmp/homebase-api/build.gradle.kts` (`baseName="homebase-api", isStatic=true`) |
-| Transitive-export pattern (reference) | `chat-kmp/homebase-core/build.gradle.kts` |
-| Version catalog | `chat-kmp/gradle/libs.versions.toml` |
-| Auth (UI-free) | `chat-kmp/homebase-api/.../youauth/YouAuthFlowManager.kt`, `.../client/auth/CredentialsManager.kt` |
-| Drive query/upload/sync | `chat-kmp/homebase-api/.../client/drives/`, `.../sync/` |
-| SQLDelight schema (drop `ChatReadCount.sq`) | `chat-kmp/homebase-api/.../sync/database/*.sq` |
-| FFmpeg integration + iOS serial-queue fix | `chat-kmp` `FFmpegKitBridgeImpl`; `~/Documents/GitHub/ffmpeg-kit/` |
-| Image compression / thumbnails | `chat-kmp` `ImageUtils` |
-| Encrypted Coil fetcher/decoder | search `chat-kmp` for the Coil fetcher in the encrypted media path |
-| App-registration / YouAuth drive request to mirror | `chat-kmp` auth flow (how chat declares its drives) |
-| **Odin Photos format + video marker + app-registration source of truth** | `~/Documents/GitHub/DotYouCore/`, `~/Documents/GitHub/homebase-web/`, `~/Documents/GitHub/dotyoucore-js/` |
+| Copy source (protocol layer) | `~/Documents/GitHub/chat-kmp/homebase-api/` (pin `e67130cd`) |
+| Round 1 plan + contracts | `docs/superpowers/plans/2026-07-05-google-photos-round1.md` |
+| Odin Photos format source of truth | `~/Documents/GitHub/DotYouCore/`, `~/Documents/GitHub/homebase-web/` |
+| Devices | iPhone 17 sim (iOS 26.5) · Redmi Note 5 Pro USB `6057f11e` (wireless adb flaky) |
 
----
+## Workflow (owner directives, all still standing)
 
-## Gotchas carried over from chat-kmp (will bite Batch 0/1 if ignored)
-
-- **Drift pin:** the copied `homebase-api` is forked from chat-kmp commit **`e67130cd`**. Record this
-  in the copied module's README. Re-syncing upstream crypto/sync fixes = diff against this hash.
-  (Upstream `improve` backlog flags weak crypto RNG + keys-in-logs in this exact layer.)
-- **iOS FFmpegKit crash:** concurrent `ffmpeg_execute` crashes (fftools not reentrant). Copy chat's
-  **serial-queue** fix in `FFmpegKitBridgeImpl`. Also: never `CODE_SIGNING_ALLOWED=NO` — unsigned
-  bundled FFmpegKit dylibs get dyld-killed at launch.
-- **Payload key rule:** must match `^[a-z0-9_]{8,10}$`. `dflt_key` (8) is fine; server 400s otherwise.
-- **Original upload:** chat uploads images **byte-for-byte** (no resize) — reuse that path for
-  "Original quality". Thumbnails are generated separately.
-- **Android thumbnail encode:** `ImageUtils` Android encode is `@RequiresApi(30)`; **WebP encode
-  has crashed** historically (PNG safe). Our thumbnails are webp (`225×300` etc.) — validate the
-  Android webp-encode path early or fall back.
-- **iOS video send:** read PHAsset video via `PHAssetResourceManager`, NOT the image-only
-  `PHImageManager` (that ships a few-KB broken file).
-- **`stateIn` spinner flash:** seed from a cache snapshot, not empty+loading, or the grid flashes a
-  spinner over cached data.
-
----
-
-## Suggested skills (invoke these in the new session)
-
-1. `superpowers:writing-plans` — **first.** Turn spec Batch 0 into a reviewable plan.
-2. `kmp-compose-multiplatform` + `kotlin-coroutines-flows` — load before touching the shared module.
-3. `superpowers:using-git-worktrees` then `superpowers:executing-plans` — to run the plan.
-4. `frontend-design` — when shaping the native grid/viewer look.
-5. Argent MCP (`argent-*` skills) — on-device build/run + grid perf profiling (iOS sim + Android emu).
-
----
-
-## Open Batch-0 decisions to settle (cheap, do them in the plan)
-
-- `uniqueId` dedup derivation: content hash vs device asset id. Pick deterministic.
-- Photo-vs-video marker: confirm from `DotYouCore`/`homebase-web` photo source (likely a `content`
-  flag or contentType check).
-- Confirm `DriveUploadProvider` handles large (video) payloads, or whether chunked/streaming upload
-  is needed.
+Strict TDD on shared logic + UI flow tests per screen · code-first batched verify (parallel writers,
+ONE builder) · clean, easy-to-read code · Material You (Android) + iOS 26 HIG (iOS), Google-Photos
+look approved · argent MCP for all device work · don't commit/push unless asked · refresh this file
+at the end of every run.

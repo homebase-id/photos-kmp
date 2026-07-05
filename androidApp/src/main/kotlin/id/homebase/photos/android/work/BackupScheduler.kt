@@ -13,8 +13,8 @@ import java.util.concurrent.TimeUnit
 
 /**
  * WorkManager scheduling for photo backup. Enabling the toggle kicks an expedited one-shot (back up
- * now) plus a 6h periodic catch-up; disabling cancels both by their unique names. D5 constraint:
- * any network, no charging gate.
+ * now) plus a 6h periodic catch-up and arms the MediaStore watch; disabling cancels all three.
+ * D5 constraint: any network, no charging gate.
  */
 object BackupScheduler {
 
@@ -27,23 +27,31 @@ object BackupScheduler {
         .build()
 
     fun enable(context: Context) {
-        val workManager = WorkManager.getInstance(context)
-
-        val oneShot = OneTimeWorkRequestBuilder<BackupWorker>()
-            .setConstraints(constraints)
-            .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
-            .build()
-        workManager.enqueueUniqueWork(ONE_SHOT_WORK, ExistingWorkPolicy.KEEP, oneShot)
+        backupNow(context)
 
         val periodic = PeriodicWorkRequestBuilder<BackupWorker>(PERIOD_HOURS, TimeUnit.HOURS)
             .setConstraints(constraints)
             .build()
-        workManager.enqueueUniquePeriodicWork(PERIODIC_WORK, ExistingPeriodicWorkPolicy.UPDATE, periodic)
+        WorkManager.getInstance(context)
+            .enqueueUniquePeriodicWork(PERIODIC_WORK, ExistingPeriodicWorkPolicy.UPDATE, periodic)
+
+        MediaWatchScheduler.schedule(context)
+    }
+
+    /** Enqueue one expedited backup pass — used by toggle-on and the media-watch trigger. */
+    fun backupNow(context: Context) {
+        val oneShot = OneTimeWorkRequestBuilder<BackupWorker>()
+            .setConstraints(constraints)
+            .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
+            .build()
+        WorkManager.getInstance(context)
+            .enqueueUniqueWork(ONE_SHOT_WORK, ExistingWorkPolicy.KEEP, oneShot)
     }
 
     fun disable(context: Context) {
         val workManager = WorkManager.getInstance(context)
         workManager.cancelUniqueWork(ONE_SHOT_WORK)
         workManager.cancelUniqueWork(PERIODIC_WORK)
+        MediaWatchScheduler.cancel(context)
     }
 }

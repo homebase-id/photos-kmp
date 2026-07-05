@@ -9,6 +9,7 @@ import android.os.Build
 import androidx.work.CoroutineWorker
 import androidx.work.ForegroundInfo
 import androidx.work.WorkerParameters
+import id.homebase.photos.backup.BackupEnabledStore
 import id.homebase.photos.backup.BackupManager
 import org.koin.core.context.GlobalContext
 
@@ -16,6 +17,7 @@ import org.koin.core.context.GlobalContext
  * Runs one idempotent backup pass. Resolves the shared [BackupManager] from the global Koin graph
  * (the same singleton the UI observes) and calls [BackupManager.backupNow]. Used both as the
  * expedited one-shot (toggle-on) and the 6h periodic worker — [BackupScheduler] owns scheduling.
+ * Gates on the persisted enabled flag so stale triggers (media watch, periodic) stay silent.
  */
 class BackupWorker(
     appContext: Context,
@@ -23,7 +25,10 @@ class BackupWorker(
 ) : CoroutineWorker(appContext, params) {
 
     override suspend fun doWork(): Result {
-        val manager = GlobalContext.get().get<BackupManager>()
+        val koin = GlobalContext.get()
+        if (!koin.get<BackupEnabledStore>().enabled()) return Result.success()
+
+        val manager = koin.get<BackupManager>()
         return try {
             manager.backupNow()
             Result.success()

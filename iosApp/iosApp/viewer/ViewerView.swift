@@ -159,8 +159,8 @@ private struct IndexedItem: Identifiable {
 }
 
 /// One pager page: a progressively-loaded photo (or video poster) centered over a darkened
-/// ambient backdrop (deterministic gradient + blurred inline placeholder) so a cold page never
-/// flashes black. The gradient key matches the grid cell's, giving frame-continuity from the tap.
+/// ambient backdrop (neutral base + blurred inline placeholder) so a cold page never
+/// flashes pure black before the placeholder decodes.
 private struct ViewerPage: View {
     @Environment(\.colorScheme) private var scheme
     let item: PhotoItem
@@ -177,15 +177,6 @@ private struct ViewerPage: View {
     /// Decoded inline placeholders keyed by fileId — decode base64 once, never in `body`.
     private static let placeholderCache = NSCache<NSString, UIImage>()
 
-    /// 6 earthy 2-stop gradients (parity with the grid cell), picked by fileId hash.
-    private static let gradientPairs: [(UInt32, UInt32)] = [
-        (0xD5E0C7, 0x8FA382),
-        (0xE3E2CE, 0xB9B6A6),
-        (0xEAE6DB, 0xC9C2AE),
-        (0xDCE5D2, 0x9AA08C),
-        (0xE7E3D7, 0xAFA893),
-        (0xDFE6D8, 0x7E806C),
-    ]
 
     var body: some View {
         ZStack {
@@ -226,16 +217,9 @@ private struct ViewerPage: View {
             .clipped()
     }
 
-    private var gradient: LinearGradient {
-        // Fold instead of abs() to avoid the abs(Int.min) trap; stable per-run bucket.
-        let raw = item.fileId.description.hashValue
-        let idx = ((raw % Self.gradientPairs.count) + Self.gradientPairs.count) % Self.gradientPairs.count
-        let pair = Self.gradientPairs[idx]
-        return LinearGradient(
-            colors: [Color(hex: pair.0), Color(hex: pair.1)],
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing
-        )
+    private var gradient: some View {
+        // Neutral flat backdrop (GPhotos parity) — the blurred placeholder above carries the color.
+        Color(hex: 0x1C1C1E)
     }
 
     /// Two-tier progressive load — kick both tiers concurrently; frame-0 lands first (cache hit

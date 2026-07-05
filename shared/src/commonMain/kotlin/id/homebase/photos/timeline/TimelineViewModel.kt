@@ -3,8 +3,12 @@ package id.homebase.photos.timeline
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import co.touchlab.kermit.Logger
+import id.homebase.api.client.eventbus.BackendEvent
+import id.homebase.api.client.eventbus.EventBus
 import id.homebase.photos.data.PhotosRepository
+import kotlinx.coroutines.flow.filterIsInstance
 import id.homebase.photos.domain.PhotoItem
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -27,7 +31,13 @@ data class TimelineUiState(
     val pagedItems: List<PhotoItem> = emptyList(),      // flat list backing the viewer pager
     val endReached: Boolean = false,
     val error: String? = null,
-)
+    val selectedIds: Set<String> = emptySet(),          // PhotoItem.fileId.toString() keys
+    val isDeleting: Boolean = false,
+) {
+    val inSelectionMode: Boolean get() = selectedIds.isNotEmpty()
+
+    fun isSelected(photo: PhotoItem): Boolean = photo.fileId.toString() in selectedIds
+}
 
 /** A month bucket: full-month title ("June 2026") + its photos, newest first. */
 data class TimelineSection(val title: String, val items: List<PhotoItem>)
@@ -35,10 +45,12 @@ data class TimelineSection(val title: String, val items: List<PhotoItem>)
 /** One-time events the native layer consumes (kept off the StateFlow). */
 sealed interface TimelineEvent {
     data class Error(val message: String) : TimelineEvent
+    data class Deleted(val count: Int) : TimelineEvent
 }
 
 class TimelineViewModel(
     private val repository: PhotosRepository,
+    eventBus: EventBus? = null,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(TimelineUiState())
@@ -49,6 +61,25 @@ class TimelineViewModel(
 
     init {
         loadFirstPage()
+        // Sync-completion reconcile: every finished sync round re-reads the newest page, so new
+        // server files appear regardless of what triggered the sync or whether the UI's refresh
+        // task survived (iOS cancels .refreshable tasks freely — QA 2026-07-05).
+        eventBus?.let { bus ->
+            viewModelScope.launch {
+                bus.events
+                    .filterIsInstance<BackendEvent.DriveEvent.Stopped>()
+                    .collect { reloadNewestIfIdle() } // single mounted drive — no driveId filter needed
+            }
+        }
+    }
+
+    private suspend fun reloadNewestIfIdle() {
+        val current = _state.value
+        // ponytail: deep-paginated sessions skip the live reload — the next open shows new items.
+        if (current.isPaginating || current.pagedItems.size > PAGE_SIZE) return
+        val page = safeLoad(beforeUserDate = null) ?: return
+        if (page == _state.value.pagedItems) return // unchanged — skip the recompose
+        applyReplace(page)
     }
 
     /** Fire-and-forget refresh (Android pull-to-refresh drives isLoading instead). */
@@ -61,12 +92,67 @@ class TimelineViewModel(
         _state.update { it.copy(isLoading = true, error = null) }
         try {
             repository.sync()
+        } catch (e: CancellationException) {
+            // iOS .refreshable cancels freely — never surface that as an error or drop content.
+            _state.update { it.copy(isLoading = false) }
+            throw e
         } catch (e: Exception) {
             Logger.w(tag = TAG) { "refresh sync failed: ${e.message}" }
             emitError(e.message ?: "Sync failed")
         }
         val page = safeLoad(beforeUserDate = null)
-        applyReplace(page)
+        if (page != null) applyReplace(page) else _state.update { it.copy(isLoading = false) }
+    }
+
+    /** Add/remove [photo] from the selection; removing the last id exits selection mode. */
+    fun toggleSelection(photo: PhotoItem) {
+        _state.update {
+            val key = photo.fileId.toString()
+            val ids = if (key in it.selectedIds) it.selectedIds - key else it.selectedIds + key
+            it.copy(selectedIds = ids)
+        }
+    }
+
+    /** Drop every selected id — exits selection mode. */
+    fun clearSelection() {
+        _state.update { it.copy(selectedIds = emptySet()) }
+    }
+
+    /** Fire-and-forget delete of the selection (Android). */
+    fun deleteSelected() {
+        viewModelScope.launch { deleteSelectedAndWait() }
+    }
+
+    /** Batch-delete the selected photos, suspending until done — iOS awaits this. */
+    suspend fun deleteSelectedAndWait() {
+        val current = _state.value
+        if (current.isDeleting || current.selectedIds.isEmpty()) return
+        val doomed = current.pagedItems.filter { current.isSelected(it) }
+        _state.update { it.copy(isDeleting = true) }
+        val deleted = try {
+            repository.deletePhotos(doomed.map { it.fileId })
+        } catch (e: CancellationException) {
+            _state.update { it.copy(isDeleting = false) } // don't wedge future deletes if the awaiting Task dies
+            throw e
+        } catch (e: Exception) {
+            Logger.w(tag = TAG) { "delete failed: ${e.message}" }
+            false
+        }
+        if (deleted) {
+            _state.update {
+                val remaining = it.pagedItems - doomed.toSet()
+                it.copy(
+                    isDeleting = false,
+                    selectedIds = emptySet(),
+                    pagedItems = remaining,
+                    sections = groupIntoMonthSections(remaining),
+                )
+            }
+            _events.tryEmit(TimelineEvent.Deleted(doomed.size))
+        } else {
+            _state.update { it.copy(isDeleting = false) }
+            emitError("Couldn't delete")
+        }
     }
 
     /** Paginate older by userDate, appending to the flat list without regrouping prior months. */
@@ -77,27 +163,31 @@ class TimelineViewModel(
         viewModelScope.launch {
             _state.update { it.copy(isPaginating = true) }
             val page = safeLoad(beforeUserDate = cursor)
-            applyAppend(page)
+            if (page != null) applyAppend(page) else _state.update { it.copy(isPaginating = false) }
         }
     }
 
     private fun loadFirstPage() {
         viewModelScope.launch {
             val page = safeLoad(beforeUserDate = null)
-            applyReplace(page)
+            if (page != null) applyReplace(page)
             // First authenticated launch: the local index is empty until the first sync, so
             // kick one awaited sync+reload. Logged out this is a cheap no-op (sync's start()
             // declines without credentials, so no page ever lands and no loop ensues).
-            if (page.isEmpty()) refreshAndWait()
+            if (page.isNullOrEmpty()) refreshAndWait()
         }
     }
 
-    private suspend fun safeLoad(beforeUserDate: Long?): List<PhotoItem> = try {
+    /** One page, or null when the read fails — callers keep existing content on null. */
+    private suspend fun safeLoad(beforeUserDate: Long?): List<PhotoItem>? = try {
         repository.loadPage(beforeUserDate = beforeUserDate, limit = PAGE_SIZE)
+    } catch (e: CancellationException) {
+        _state.update { it.copy(isLoading = false, isPaginating = false) }
+        throw e
     } catch (e: Exception) {
         Logger.w(tag = TAG) { "loadPage failed: ${e.message}" }
         emitError(e.message ?: "Couldn't load photos")
-        emptyList()
+        null
     }
 
     private fun applyReplace(page: List<PhotoItem>) {

@@ -3,6 +3,7 @@ package id.homebase.photos.data
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.HomebaseFile
+import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.sync.DriveSyncManager
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.serialization.OdinSystemSerializer
@@ -33,6 +34,7 @@ class PhotosRepositoryImpl(
     private val databaseManager: DatabaseManager,
     private val credentialsManager: CredentialsManager,
     private val imageLoader: HomebaseImageLoader,
+    private val driveFileProvider: DriveFileProvider,
 ) : PhotosRepository {
 
     private val _photos = MutableStateFlow<List<PhotoItem>>(emptyList())
@@ -70,6 +72,13 @@ class PhotosRepositoryImpl(
         driveSyncManager.ensureMandatoryMounted()
         driveSyncManager.start()   // idempotent; no-op without credentials
         driveSyncManager.syncAll() // suspends until own drives finish
+    }
+
+    override suspend fun deletePhotos(fileIds: List<Uuid>): Boolean {
+        if (fileIds.isEmpty()) return true
+        val outcome = driveFileProvider.deleteFiles(driveId, fileIds)
+        // Not-found counts as deleted — the goal state (file absent) already holds.
+        return outcome.results.all { it.localFileDeleted || it.localFileNotFound }
     }
 
     override suspend fun loadThumbnailBytes(item: PhotoItem, maxDim: Int): ByteArray? {

@@ -2,6 +2,7 @@ package id.homebase.photos.data
 
 import id.homebase.photos.domain.PhotoItem
 import kotlinx.coroutines.flow.Flow
+import kotlin.uuid.Uuid
 
 /**
  * Timeline data source. Impl wraps `homebase-api` (DriveSync pull + a local
@@ -19,6 +20,9 @@ interface PhotosRepository {
 
     /** DriveSync pull of the Photos drive; refreshes the local index. */
     suspend fun sync()
+
+    /** Soft-delete [fileIds] on the drive (batch). True when every file deleted. */
+    suspend fun deletePhotos(fileIds: List<Uuid>): Boolean
 
     /**
      * Decoded thumbnail bytes for [item] sized to roughly [maxDim] on the longest

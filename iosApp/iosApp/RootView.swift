@@ -3,8 +3,8 @@ import Foundation
 import Shared
 
 /// Session gate. Observes the shared `YouAuthFlowManager.authState` and swaps the root between a
-/// splash placeholder, the login screen, and the timeline. Kept above any NavigationStack so the
-/// gate always wins regardless of in-app navigation (see plan 004's viewer).
+/// splash placeholder, the login screen, and the tabbed home. Kept above any NavigationStack so
+/// the gate always wins regardless of in-app navigation (see plan 004's viewer).
 struct RootView: View {
     @Environment(\.colorScheme) private var scheme
     @StateObject private var model = RootModel()
@@ -16,8 +16,8 @@ struct RootView: View {
                 PhotosColor.background(scheme).ignoresSafeArea()
             case .login:
                 LoginView()
-            case .timeline:
-                TimelineView()
+            case .home:
+                HomeTabView()
             }
         }
         .task { model.start() }
@@ -26,11 +26,11 @@ struct RootView: View {
 
 /// Coarse root destinations derived from the shared auth state.
 enum RootRoute {
-    case splash, login, timeline
+    case splash, login, home
 }
 
 /// Maps `YouAuthState` → a `RootRoute`. `Initializing` shows the splash (avoids a login flash
-/// before the stored session resolves); `Authenticated` shows the timeline; everything else
+/// before the stored session resolves); `Authenticated` shows the tabbed home; everything else
 /// (unauthenticated / authenticating / error) shows login.
 @MainActor
 final class RootModel: ObservableObject {
@@ -55,7 +55,7 @@ final class RootModel: ObservableObject {
     // Flattened SKIE sealed-subclass casts (mirror the YouAuthStateAuthenticated etc. names).
     private static func route(for state: YouAuthState) -> RootRoute {
         if state is YouAuthStateInitializing { return .splash }
-        if state is YouAuthStateAuthenticated { return .timeline }
+        if state is YouAuthStateAuthenticated { return .home }
         return .login
     }
 

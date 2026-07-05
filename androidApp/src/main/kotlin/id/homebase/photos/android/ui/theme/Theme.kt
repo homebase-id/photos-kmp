@@ -1,16 +1,20 @@
 package id.homebase.photos.android.ui.theme
 
+import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Shapes
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.dynamicDarkColorScheme
+import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -18,11 +22,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 /**
- * Conservatory theme — Homebase Photos.
+ * Neutral Google-Photos theme — Homebase Photos.
  *
- * Standalone and compile-ready once Compose is wired into the Gradle build (Batch-0 Task 5). Do NOT
- * edit build.gradle for this; it is groundwork. Mirrors iosApp/Theme/Theme.swift exactly on color
- * and type-role intent.
+ * Surfaces are pure white (light) / pure black (dark) everywhere; Material dynamic color supplies
+ * the accents on Android 12+, with the muted-moss static schemes as the SDK < 31 fallback.
  */
 
 private val LightColorScheme =
@@ -47,6 +50,7 @@ private val LightColorScheme =
                 onErrorContainer = PhotosLightColors.OnErrorContainer,
                 outline = PhotosLightColors.Outline,
                 scrim = PhotosLightColors.Scrim,
+                surfaceTint = PhotosLightColors.Surface, // pure ground — no tonal accent bleed
                 surfaceContainerLowest = PhotosLightColors.Surface,
                 surfaceContainerLow = PhotosLightColors.Surface1,
                 surfaceContainer = PhotosLightColors.Surface2,
@@ -76,6 +80,7 @@ private val DarkColorScheme =
                 onErrorContainer = PhotosDarkColors.OnErrorContainer,
                 outline = PhotosDarkColors.Outline,
                 scrim = PhotosDarkColors.Scrim,
+                surfaceTint = PhotosDarkColors.Surface, // pure ground — no tonal accent bleed
                 surfaceContainerLowest = PhotosDarkColors.Surface,
                 surfaceContainerLow = PhotosDarkColors.Surface1,
                 surfaceContainer = PhotosDarkColors.Surface2,
@@ -158,20 +163,20 @@ val PhotosTypography =
                                 lineHeight = 28.sp,
                                 letterSpacing = 0.sp,
                         ),
-                // monthHeader — the one place type carries structure.
+                // monthHeader — month boundary ("March 2022"), bold plain text on the background.
                 headlineSmall =
                         TextStyle(
                                 fontFamily = FontFamily.Default,
-                                fontWeight = FontWeight.SemiBold,
-                                fontSize = 20.sp,
-                                lineHeight = 26.sp,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 22.sp,
+                                lineHeight = 28.sp,
                                 letterSpacing = (-0.2).sp,
                         ),
-                // dateSubhead — day group inside a month.
+                // dateSubhead — the primary day header ("Wed, Mar 30"), semibold.
                 titleSmall =
                         TextStyle(
                                 fontFamily = FontFamily.Default,
-                                fontWeight = FontWeight.Medium,
+                                fontWeight = FontWeight.SemiBold,
                                 fontSize = 15.sp,
                                 lineHeight = 20.sp,
                                 letterSpacing = 0.sp,
@@ -233,8 +238,44 @@ val PhotosShapes =
 
 @Composable
 fun PhotosTheme(darkTheme: Boolean = isSystemInDarkTheme(), content: @Composable () -> Unit) {
-    val colorScheme = if (darkTheme) DarkColorScheme else LightColorScheme
-    val extended = if (darkTheme) DarkExtendedColors else LightExtendedColors
+    // Material You: dynamic accents on Android 12+, but surfaces stay pure white/black —
+    // Google Photos never tints the ground with the wallpaper.
+    val dynamic = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+    val colorScheme = when {
+        dynamic -> {
+            val context = LocalContext.current
+            // surfaceTint must match the surface or M3's tonal elevation re-tints every
+            // elevated surface (nav bar, cards) with the accent — the ground must stay pure.
+            if (darkTheme) {
+                dynamicDarkColorScheme(context).copy(
+                        background = Color(0xFF000000),
+                        surface = Color(0xFF000000),
+                        surfaceTint = Color(0xFF000000),
+                        surfaceContainerLowest = PhotosDarkColors.Surface,
+                        surfaceContainerLow = PhotosDarkColors.Surface1,
+                        surfaceContainer = PhotosDarkColors.Surface2,
+                        surfaceContainerHigh = PhotosDarkColors.Surface3,
+                        surfaceContainerHighest = PhotosDarkColors.Surface4,
+                )
+            } else {
+                dynamicLightColorScheme(context).copy(
+                        background = Color(0xFFFFFFFF),
+                        surface = Color(0xFFFFFFFF),
+                        surfaceTint = Color(0xFFFFFFFF),
+                        surfaceContainerLowest = PhotosLightColors.Surface,
+                        surfaceContainerLow = PhotosLightColors.Surface1,
+                        surfaceContainer = PhotosLightColors.Surface2,
+                        surfaceContainerHigh = PhotosLightColors.Surface3,
+                        surfaceContainerHighest = PhotosLightColors.Surface4,
+                )
+            }
+        }
+        darkTheme -> DarkColorScheme
+        else -> LightColorScheme
+    }
+    // Grid gaps are the background itself; the over-photo overlay tokens are theme-agnostic.
+    val extended = (if (darkTheme) DarkExtendedColors else LightExtendedColors)
+            .copy(gridGap = colorScheme.background)
 
     CompositionLocalProvider(LocalPhotosExtendedColors provides extended) {
         MaterialTheme(

@@ -4,6 +4,7 @@ import android.app.Application
 import id.homebase.api.ActivityProvider
 import id.homebase.api.storage.SecureStorage
 import id.homebase.api.storage.SharedPreferences
+import id.homebase.photos.android.work.MediaWatchScheduler
 import id.homebase.photos.initKoin
 import id.homebase.photos.initializeStorage
 import kotlinx.coroutines.runBlocking
@@ -26,5 +27,8 @@ class PhotosApp : Application() {
         // Open the encrypted DB before the root gate resolves the auth graph — the gate
         // resolves it synchronously in MainActivity.onCreate (which runs after this).
         runBlocking { initializeStorage() }
+        // Re-arm the media watch every process start (same-id replace is idempotent);
+        // covers force-stop, which clears scheduled jobs.
+        MediaWatchScheduler.schedule(this)
     }
 }

@@ -63,7 +63,7 @@ fun LoginScreen(viewModel: LoginViewModel, modifier: Modifier = Modifier) {
 }
 
 /**
- * Stateless login screen (design-system §5.1). A full-bleed warm ground carries a centered column —
+ * Stateless login screen (design-system §5.1). A full-bleed neutral ground carries a centered column —
  * leaf glyph, wordmark, one line of subtext, the Homebase-ID field, and the primary pill — with a
  * quiet caption pinned to the bottom. The four [LoginPhase] states each render distinctly:
  *  - [LoginPhase.LoggedOut]      → editable field, "Sign in with Homebase" (enabled iff id present).

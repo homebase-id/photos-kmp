@@ -3,9 +3,10 @@ import UIKit
 import Shared
 
 /// The Timeline grid — the heart of the MVP. A `NavigationStack`-hosted, edge-to-edge grid
-/// of square-cropped thumbnails, grouped into months (sticky frosted headers) and day
-/// sub-headers, rendered over the warm `background` with the `gridGap` mat showing through a
-/// hairline 1.5pt gap.
+/// of square-cropped thumbnails, grouped into month headers and day headers (Google Photos
+/// hierarchy) on the plain system background, which also shows through the hairline 1.5pt cell
+/// gap. Long-press enters multi-select (C5): the nav bar swaps for a `SelectionTopBar`, the
+/// tab bar hides, and trash confirms a batch delete.
 ///
 /// State comes from `TimelineModel` (a `@StateObject` owning ONE shared `TimelineViewModel`
 /// across struct re-inits). Views render; the VM owns logic.
@@ -13,42 +14,62 @@ struct TimelineView: View {
     @Environment(\.colorScheme) private var scheme
     @StateObject private var model = TimelineModel()
     @State private var showLogoutDialog = false
+    @State private var showDeleteDialog = false
+
+    private var inSelectionMode: Bool { model.uiState?.inSelectionMode == true }
+    private var selectedCount: Int { model.uiState?.selectedIds.count ?? 0 }
 
     var body: some View {
         NavigationStack {
             GeometryReader { geo in
                 let columns = PhotosMetrics.timelineColumns(forWidth: geo.size.width)
-                // Warm background is attached as a `.background` modifier (edge-to-edge, no white
-                // strips) rather than a full-bleed ZStack sibling layer. It draws BEHIND the
-                // ScrollView so it never covers the nav large-title layer, and keeps this a
-                // concrete drawn container so the a11y root isn't collapsed out of the AX tree.
+                // The background is attached as a `.background` modifier (edge-to-edge, no
+                // strips) rather than a full-bleed ZStack sibling layer, so it draws BEHIND the
+                // ScrollView and never covers the nav bar layer. It also carries the
+                // `timeline-root` a11y id: a container modifier on the single-child surface
+                // collapses onto the surface's own AX element and shadows its id (timeline-grid/
+                // -empty), while a drawn sibling layer always materializes alongside it.
                 content(columns: columns)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .background(PhotosColor.background(scheme).ignoresSafeArea())
-                    .accessibilityElement(children: .contain)
-                    .accessibilityIdentifier("timeline-root")
+                    .background(
+                        PhotosColor.background(scheme)
+                            .ignoresSafeArea()
+                            .accessibilityElement(children: .ignore)
+                            .accessibilityIdentifier("timeline-root")
+                    )
+                    .overlay(alignment: .bottom) { toastView }
                     .onAppear { model.setColumns(columns) }
                     .onChange(of: columns) { _, newColumns in model.setColumns(newColumns) }
             }
             .navigationTitle("Photos")
-            .navigationBarTitleDisplayMode(.large)
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button(action: { showLogoutDialog = true }) {
                         Image(systemName: "person.crop.circle")
-                            .font(.system(size: 28))
+                            .font(.system(size: 26))
                             .foregroundColor(PhotosColor.onSurfaceVariant(scheme))
+                            .frame(width: 32, height: 32)
                     }
                     .accessibilityLabel("Account")
                     .accessibilityIdentifier("account-button")
                 }
             }
+            // Selection swaps the whole top bar (C5): hide the nav bar, mount SelectionTopBar
+            // in its place, and drop the tab bar until selection ends.
+            .toolbar(inSelectionMode ? .hidden : .automatic, for: .navigationBar)
+            .toolbar(inSelectionMode ? .hidden : .visible, for: .tabBar)
+            .safeAreaInset(edge: .top) {
+                if inSelectionMode {
+                    SelectionTopBar(
+                        count: selectedCount,
+                        onClose: { model.vm.clearSelection() },
+                        onDelete: { showDeleteDialog = true }
+                    )
+                }
+            }
             // Only set the bar's scrolled (standard) appearance color — do NOT force
-            // `.visible`. Forcing visibility made iOS 26 render the opaque bar material across
-            // the expanded large-title band, painting over the "Photos" large title (toolbar
-            // items draw above it, so the account button stayed visible). Letting the default
-            // transparent scroll-edge appearance stand lets the large title paint; the warm bar
-            // still fills in once the grid scrolls under it.
+            // `.visible`: on iOS 26 that renders the opaque bar material over the title layer.
             .toolbarBackground(PhotosColor.surface(scheme), for: .navigationBar)
         }
         .tint(PhotosColor.primary(scheme))
@@ -67,6 +88,17 @@ struct TimelineView: View {
         } message: {
             Text("You'll need to sign in again to see your photos.")
         }
+        // Delete confirmation (C5). An alert, not a confirmationDialog — iOS 26 renders the
+        // dialog as a card with no visible Cancel, wrong for a destructive confirm.
+        .alert(deleteTitle, isPresented: $showDeleteDialog) {
+            Button("Delete", role: .destructive) {
+                Task { try? await model.vm.deleteSelectedAndWait() }
+            }
+            .accessibilityIdentifier("delete-confirm")
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("They'll be removed from your Homebase photo library.")
+        }
         .task { model.start() }
         .fullScreenCover(
             isPresented: Binding(
@@ -82,6 +114,10 @@ struct TimelineView: View {
         }
     }
 
+    private var deleteTitle: String {
+        selectedCount == 1 ? "Delete 1 item?" : "Delete \(selectedCount) items?"
+    }
+
     // MARK: - State branching
 
     @ViewBuilder
@@ -89,83 +125,14 @@ struct TimelineView: View {
         let state = model.uiState
         let sections = state?.sections ?? []
         if state == nil || (state!.isLoading && sections.isEmpty) {
-            skeleton(columns: columns)
+            SkeletonGrid(columns: columns)
         } else if sections.isEmpty, let message = state?.error ?? model.loadError {
-            errorState(message: message)
+            ErrorStateView(message: message, onRetry: { model.vm.refresh() })
         } else if sections.isEmpty {
-            emptyState
+            EmptyStateView()
         } else {
             grid(columns: columns)
         }
-    }
-
-    // MARK: - Skeleton
-
-    private func skeleton(columns: Int) -> some View {
-        let gap = PhotosMetrics.gridGapWidth
-        let gridColumns = Array(
-            repeating: GridItem(.flexible(), spacing: gap, alignment: .center),
-            count: max(1, columns)
-        )
-        return ScrollView {
-            LazyVGrid(columns: gridColumns, spacing: gap) {
-                ForEach(0..<(max(1, columns) * 12), id: \.self) { _ in
-                    Rectangle()
-                        .fill(PhotosColor.gridGap(scheme))
-                        .aspectRatio(1, contentMode: .fill)
-                        .clipped()
-                }
-            }
-        }
-        .background(PhotosColor.gridGap(scheme))
-        .allowsHitTesting(false)
-        .accessibilityIdentifier("timeline-skeleton")
-    }
-
-    // MARK: - Error / empty
-
-    private func errorState(message: String) -> some View {
-        VStack(spacing: PhotosMetrics.space12) {
-            Text("Couldn't load photos")
-                .font(PhotosFont.display)
-                .foregroundColor(PhotosColor.onBackground(scheme))
-            Text(message)
-                .font(PhotosFont.bodyMedium)
-                .foregroundColor(PhotosColor.onSurfaceVariant(scheme))
-                .multilineTextAlignment(.center)
-            Button {
-                model.vm.refresh()
-            } label: {
-                Text("Try again")
-                    .font(PhotosFont.label)
-                    .foregroundColor(PhotosColor.onPrimary(scheme))
-                    .padding(.horizontal, PhotosMetrics.space24)
-                    .padding(.vertical, PhotosMetrics.space12)
-                    .background(PhotosColor.primary(scheme))
-                    .clipShape(RoundedRectangle(cornerRadius: PhotosMetrics.radiusXl))
-            }
-            .accessibilityLabel("Try again")
-        }
-        .padding(PhotosMetrics.screenEdge)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("timeline-error")
-    }
-
-    private var emptyState: some View {
-        VStack(spacing: PhotosMetrics.space12) {
-            Text("No photos yet")
-                .font(PhotosFont.display)
-                .foregroundColor(PhotosColor.onBackground(scheme))
-            Text("Back up your camera roll to see it here.")
-                .font(PhotosFont.bodyMedium)
-                .foregroundColor(PhotosColor.onSurfaceVariant(scheme))
-                .multilineTextAlignment(.center)
-        }
-        .padding(PhotosMetrics.screenEdge)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("timeline-empty")
     }
 
     // MARK: - Grid
@@ -184,7 +151,7 @@ struct TimelineView: View {
                             DayHeader(title: day.title)
                             LazyVGrid(columns: gridColumns, spacing: gap) {
                                 ForEach(day.items, id: \.fileId.description) { item in
-                                    PhotoCell(item: item, onTap: { model.showViewer(for: item) })
+                                    cell(for: item)
                                         .onAppear { maybePaginate(item: item) }
                                 }
                             }
@@ -192,26 +159,34 @@ struct TimelineView: View {
                     }
                 }
                 if model.uiState?.isPaginating == true {
-                    paginationFooter
+                    PaginationFooter()
                 }
             }
         }
-        // Edge-to-edge: the grid mat is the gridGap showing through the hairline cell spacing.
+        // Edge-to-edge: the background shows through the hairline cell spacing.
         .background(PhotosColor.gridGap(scheme))
         .refreshable { try? await model.vm.refreshAndWait() }
-        .overlay(alignment: .bottom) { toastView }
         .accessibilityIdentifier("timeline-grid")
     }
 
-    private var paginationFooter: some View {
-        HStack {
-            Spacer()
-            ProgressView().tint(PhotosColor.primary(scheme))
-            Spacer()
-        }
-        .frame(maxWidth: .infinity)
-        .frame(height: PhotosMetrics.space48)
-        .accessibilityIdentifier("timeline-footer")
+    /// Selection routing (C5): tap toggles in selection mode, opens the viewer otherwise;
+    /// long-press enters selection with this photo.
+    private func cell(for item: PhotoItem) -> some View {
+        PhotoCell(
+            item: item,
+            selected: model.uiState?.isSelected(photo: item) == true,
+            selectionMode: inSelectionMode,
+            onTap: {
+                if inSelectionMode {
+                    model.vm.toggleSelection(photo: item)
+                } else {
+                    model.showViewer(for: item)
+                }
+            },
+            onLongPress: {
+                if !inSelectionMode { model.vm.toggleSelection(photo: item) }
+            }
+        )
     }
 
     @ViewBuilder
@@ -238,186 +213,5 @@ struct TimelineView: View {
         if model.prefetchIds.contains(item.fileId.description) {
             model.vm.loadMore()
         }
-    }
-}
-
-/// Sticky full-width month header. Real frosted blur (`.ultraThinMaterial` + a faint
-/// surface tint) so photos smear softly under it on scroll — the one place type carries structure.
-private struct MonthHeader: View {
-    @Environment(\.colorScheme) private var scheme
-    let title: String
-
-    var body: some View {
-        Text(title)
-            .font(PhotosFont.monthHeader)
-            .foregroundColor(PhotosColor.onSurface(scheme))
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, PhotosMetrics.space16)
-            .padding(.vertical, PhotosMetrics.space12)
-            .background {
-                ZStack {
-                    Rectangle().fill(.ultraThinMaterial)
-                    PhotosColor.surface(scheme).opacity(0.6)
-                }
-            }
-            .accessibilityIdentifier("timeline-month-header")
-    }
-}
-
-/// Plain full-width day sub-header inside a month. Quiet `onSurfaceVariant` label over the
-/// screen background so it reads as a break in the grid mat.
-private struct DayHeader: View {
-    @Environment(\.colorScheme) private var scheme
-    let title: String
-
-    var body: some View {
-        Text(title)
-            .font(PhotosFont.dateSubhead)
-            .foregroundColor(PhotosColor.onSurfaceVariant(scheme))
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, PhotosMetrics.space16)
-            .padding(.top, PhotosMetrics.space8)
-            .padding(.bottom, PhotosMetrics.space4)
-            .background(PhotosColor.background(scheme))
-            .accessibilityIdentifier("timeline-day-header")
-    }
-}
-
-/// A single square grid cell: deterministic earthy gradient → blurred inline placeholder →
-/// crossfaded thumbnail, with a play badge for videos. No GeometryReader — `aspectRatio(1,
-/// .fill) + .clipped()` inside the grid column does the square sizing.
-private struct PhotoCell: View {
-    @Environment(\.colorScheme) private var scheme
-    let item: PhotoItem
-    var onTap: () -> Void = {}
-
-    @State private var image: UIImage?
-    @State private var placeholder: UIImage?
-
-    /// Grid thumbnails request the 300-max-dim server thumbnail (§4.4 / PhotoConfig).
-    private static let gridMaxDim = 300
-
-    /// Decoded inline placeholders, keyed by fileId — decode base64 once, never in `body`.
-    private static let placeholderCache = NSCache<NSString, UIImage>()
-
-    private static let dateLabelFormatter: DateFormatter = {
-        let f = DateFormatter()
-        f.timeZone = TimeZone(identifier: "UTC")!
-        f.dateFormat = "MMM d, yyyy"
-        return f
-    }()
-
-    /// 6 earthy 2-stop gradients (parity with Android plan 002 Step 5), picked by fileId hash.
-    private static let gradientPairs: [(UInt32, UInt32)] = [
-        (0xD5E0C7, 0x8FA382),
-        (0xE3E2CE, 0xB9B6A6),
-        (0xEAE6DB, 0xC9C2AE),
-        (0xDCE5D2, 0x9AA08C),
-        (0xE7E3D7, 0xAFA893),
-        (0xDFE6D8, 0x7E806C),
-    ]
-
-    var body: some View {
-        // Canonical square-cell idiom: an aspect-locked Color.clear base that IGNORES child
-        // sizing drives the 1:1 frame; the image/gradient layers live in an overlay so their
-        // .scaledToFill ideal height can't leak into layout (which was inflating cells and
-        // overpainting the day header above each row).
-        Color.clear
-            .aspectRatio(1, contentMode: .fit)
-            .overlay {
-                ZStack {
-                    fallbackGradient
-                    if let placeholder {
-                        Image(uiImage: placeholder)
-                            .resizable()
-                            .scaledToFill()
-                            .blur(radius: 6)
-                    }
-                    if let image {
-                        Image(uiImage: image)
-                            .resizable()
-                            .scaledToFill()
-                            .transition(.opacity)
-                    }
-                    if item.isVideo {
-                        VideoBadge()
-                    }
-                }
-            }
-            .clipped()
-            .contentShape(Rectangle())
-        .onTapGesture { onTap() }
-        .accessibilityElement(children: .ignore)
-        .accessibilityAddTraits(.isButton)
-        .accessibilityLabel(item.isVideo ? "Video, \(dateLabel)" : "Photo, \(dateLabel)")
-        .accessibilityIdentifier("photo-cell")
-        .task(id: item.fileId.description) {
-            // Decode placeholder + load thumbnail off the render path; both keyed by fileId.
-            loadPlaceholder()
-            let loaded = await ThumbnailLoader.shared.image(for: item, maxDim: Self.gridMaxDim)
-            withAnimation(.easeIn(duration: 0.2)) { image = loaded }
-        }
-    }
-
-    private var dateLabel: String {
-        let date = Date(timeIntervalSince1970: Double(item.userDate) / 1000.0)
-        return Self.dateLabelFormatter.string(from: date)
-    }
-
-    private var fallbackGradient: LinearGradient {
-        // Fold instead of abs() to avoid the abs(Int.min) trap; still a stable per-run bucket.
-        let raw = item.fileId.description.hashValue
-        let idx = ((raw % Self.gradientPairs.count) + Self.gradientPairs.count) % Self.gradientPairs.count
-        let pair = Self.gradientPairs[idx]
-        return LinearGradient(
-            colors: [Color(hex: pair.0), Color(hex: pair.1)],
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing
-        )
-    }
-
-    /// Decode the inline base64 webp placeholder (cached by fileId). No-op if absent/undecodable
-    /// — the cell falls back to the gradient.
-    private func loadPlaceholder() {
-        guard placeholder == nil else { return }
-        let key = item.fileId.description as NSString
-        if let cached = Self.placeholderCache.object(forKey: key) {
-            placeholder = cached
-            return
-        }
-        guard let base64 = item.previewPlaceholder, !base64.isEmpty else { return }
-        // Tolerate an optional data-URL prefix ("data:image/webp;base64,").
-        let payload = base64.contains(",") ? String(base64.split(separator: ",").last ?? "") : base64
-        guard let data = Data(base64Encoded: payload, options: .ignoreUnknownCharacters),
-              let img = UIImage(data: data) else { return }
-        Self.placeholderCache.setObject(img, forKey: key)
-        placeholder = img
-    }
-}
-
-/// Small play badge bottom-right over a faint bottom gradient, drawn with over-photo
-/// `onOverlay` tokens so it stays legible on any thumbnail.
-private struct VideoBadge: View {
-    @Environment(\.colorScheme) private var scheme
-
-    var body: some View {
-        VStack {
-            Spacer()
-            HStack {
-                Spacer()
-                Image(systemName: "play.fill")
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundColor(PhotosColor.onOverlay(scheme))
-                    .padding(PhotosMetrics.space4)
-            }
-            .background(
-                LinearGradient(
-                    colors: [.clear, PhotosColor.overlayChrome(scheme)],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-            )
-        }
-        .allowsHitTesting(false)
     }
 }
