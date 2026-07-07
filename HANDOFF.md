@@ -1,8 +1,8 @@
 # Homebase Photos — Handoff
 
 **For:** a fresh Claude Code session opened in `~/Documents/GitHub/homebase-photos`.
-**Updated:** 2026-07-05 ~04:00 (keep this file current — owner directive: refresh it at the end of every finishing run).
-**Status:** MVP committed (`b256602` on `photos-mvp`) + **Google Photos Round 1 implemented, verified, UNCOMMITTED** in the working tree.
+**Updated:** 2026-07-07 ~15:45 (keep this file current — owner directive: refresh it at the end of every finishing run).
+**Status:** MVP + Round 1 committed (`ef24aa5` on `photos-mvp`) + **background-backup upload/video/cold-start work implemented & device-verified, UNCOMMITTED** in the working tree (about to commit).
 
 ---
 
@@ -43,25 +43,70 @@ Device-verified 2026-07-04 on iPhone 17 sim + Redmi Note 5 Pro.
 46/46 `connectedDebugAndroidTest` on the Redmi · iOS xcodebuild green · XCUITests 5 pass /
 4 designed skips. iOS device QA: tabs, collections, selection, delete-alert, refresh — all pass.
 
+**Background-backup work (2026-07-07, working tree, Redmi-verified — UNCOMMITTED):**
+- **Real background upload.** `BackupWorker` now delegates to a shared `BackgroundBackup.run()`
+  (commonMain, iOS-reusable): `restoreSession` → enqueue → `repository.sync()` (brings the outbox
+  online) → `OutboxSync.awaitDrained()` (new; keeps the worker alive until uploads finish). Before
+  this, the worker enqueued durably then returned, and nothing brought the outbox online in a
+  worker-only process — rows shipped only on next app open.
+- **Cold-start session restore (THE fix).** A WorkManager cold-started process has no login;
+  `BackgroundBackup.run()` calls `youAuth.restoreSession()` first. Without it: `mountDrive … skipped
+  — no active credentials`, upload silently skipped. See gotcha + memory
+  `background-workers-need-restoresession`.
+- **Video backup.** `MediaStoreCrawler` now enumerates images **and** video (merged buckets, `vid:`
+  prefix on video IDs to avoid API-28 `_ID` collisions), + `readPosterFrame` via native
+  `MediaMetadataRetriever` (no FFmpeg — poster only; HLS/transcode still deferred). `PhotoFileBuilder`
+  splits `payloadBytes` (video, byte-for-byte, drives the dedup hash + MIME) from `thumbnailBytes`
+  (poster). `BackupManager` branches video→poster with a 200 MB skip-guard (pre-read) until streaming
+  upload lands. Photo path byte-identical (thumbnailBytes defaults to payloadBytes).
+- **Verified on the Redmi (2026-07-07):** shared JVM/Android/iOS compile green, backup jvmTests 12/12.
+  A 1.1 MB video uploaded+`completed` to the real drive (dedup id == `sha256(bytes)[:16]` hash-match).
+  Cold-start proven: `am kill` the app, force job 4243 → fresh PID logged `Session restored` and a
+  killed-app screenshot went `sending → completed` (hash-matched). iOS bindings exist
+  (`backgroundBackup()` factory) but the iOS BGTask trigger + PHAsset crawler are NOT built yet.
+
 ## Blockers / owner actions
 
-1. **Redmi lost its login session** — the instrumented-test run reinstalled the app, killing the
-   Android Keystore key; Auto-Backup restored ciphertext that can no longer decrypt →
-   `hasStoredCredentials()`=true but silent fall-through to login. **Owner must re-login on the
-   Redmi**, then run: Android visual QA, the event-backup latency test (push jpg into
-   `/sdcard/DCIM/Camera` + `MEDIA_SCANNER_SCAN_FILE` → upload ≤ ~35s), and cross-device
-   create→sync→delete.
+1. **Redmi login is HEALTHY again** (2026-07-07) — logged in as `peter.parker.demo.rocks`, survived
+   several `installDebug` reinstalls this session and cold-restores fine. The earlier Keystore-wipe
+   blocker is resolved. (Still true: `connectedDebugAndroidTest` reinstall can wipe the session — see
+   gotcha — but a plain `installDebug` did not.)
 2. MIUI battery optimization may throttle the JobScheduler trigger / BOOT_COMPLETED on the Redmi —
-   whitelist the app in MIUI battery settings for reliable seconds-later backup.
+   whitelist the app in MIUI battery settings for reliable seconds-later backup. Cold-start upload
+   was verified by forcing job 4243 (`cmd jobscheduler run -f id.homebase.photos 4243`); confirm the
+   natural content-trigger fires unforced under MIUI before trusting seconds-latency in the field.
+3. **Test uploads on the real drive (2026-07-07):** a `vidtest.mp4` (copy of a GoPro clip) + a few
+   QA screenshots were backed up to the owner's Photos drive during verification. Delete from the
+   app/web if unwanted.
 
 ## Next roadmap slices (deferred from Round 1 deliberately)
 
 Album create/rename/add-photos (needs header-update/tag-write path) → share → favorites/archive/
-trash → search + month scrubber (Batch 3) → video playback (riskiest, last) → iOS event-driven
-backup (PHPhotoLibraryChangeObserver + BGProcessingTask).
+trash → search + month scrubber (Batch 3) → **video playback** (backup now works; playback +
+HLS/transcode still the riskiest, last) → **iOS background backup** (PHAsset crawler to replace the
+stub + BGProcessingTask/PHPhotoLibraryChangeObserver trigger that calls the shared
+`backgroundBackup().run()`) → large-video streaming upload (removes the 200 MB skip-guard) → drop
+the dead video-URI trigger or finish it (done) / extend crawler `folders()` count label ("photos"
+now includes videos — cosmetic).
 
 ## Gotchas (new ones first — older ones still apply)
 
+- **Cold-started background processes have NO login session** (2026-07-07). WorkManager cold-starts a
+  process that never runs the UI startup path, so `YouAuthFlowManager.init{}`'s `restoreSession()`
+  never fires → `DriveSync … no active credentials`, `OutboxSync: send() skipped — offline`, uploads
+  silently skipped. Any headless entrypoint (BackupWorker, future iOS BGTask) MUST await
+  `youAuth.restoreSession()` before sync/upload. To test a true cold start: `am kill <pkg>` (keeps
+  jobs; `force-stop` cancels them) then `cmd jobscheduler run -f id.homebase.photos 4243`.
+- **Enqueue ≠ upload** — the outbox only drains when `isOnline` AND `send()` were kicked, both done by
+  `DriveSyncManager.start()`. A worker that only enqueues returns before anything ships; keep
+  `BackgroundBackup.run()`'s `repository.sync()` + `OutboxSync.awaitDrained()`.
+- **Kotlin block comments NEST** — a literal `/*` inside a KDoc (e.g. writing `` `video/*` ``) opens a
+  nested comment and the `*/` closes THAT, leaving the doc comment unterminated → cascading
+  "Unresolved reference" errors far below. Write `video/…` in comments.
+- **Video backup = original bytes + native poster** — poster via `MediaMetadataRetriever`
+  (Android) / `AVAssetImageGenerator` (iOS), NOT FFmpeg (FFmpeg is the viewer/decode + future HLS).
+  Video `deviceAssetId` is `vid:`-prefixed; keep image ids bare (changing them orphans the ledger).
+  Poster extraction only runs on-device (androidMain) — jvmTest covers the wiring with a fake.
 - **M3 `surfaceTint` defaults to primary** — any tonal-elevated surface (NavigationBar, cards) gets
   accent-tinted. GPhotos-pure grounds need `surfaceTint = surface` in every scheme incl. dynamic `.copy`.
 - **iOS `.refreshable` tasks die before the reload step** (synthetic and possibly real pulls) — the

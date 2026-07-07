@@ -4,6 +4,7 @@ import co.touchlab.kermit.Logger
 import id.homebase.api.client.drives.upload.UploadFileRequest
 import id.homebase.api.sync.database.EnqueueResult
 import id.homebase.api.sync.database.OutboxSync
+import id.homebase.photos.PhotoConfig
 import kotlinx.atomicfu.atomic
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -129,12 +130,32 @@ class BackupManager(
                         bumpDone()                          // already backed up — counts toward progress
                         continue
                     }
+                    // Skip oversize videos BEFORE reading — a huge file read fully into memory would
+                    // OOM the pass. ponytail: 200 MB ceiling; drop it when chunked video upload lands.
+                    val isVideo = PhotoConfig.isVideo(asset.mimeType ?: "")
+                    if (isVideo && (asset.sizeBytes ?: 0L) > MAX_VIDEO_BYTES) {
+                        _state.update { it.copy(lastError = "Video too large for now: ${asset.fileName}") }
+                        continue
+                    }
                     val bytes = crawler.readBytes(asset)
                     if (bytes == null) {
                         _state.update { it.copy(lastError = "Couldn't read ${asset.fileName}") }
                         continue
                     }
-                    val request = builder.build(asset, bytes)
+                    // Video payload is the original bytes byte-for-byte, but thumbnails need a poster
+                    // frame (video bytes aren't a decodable image). Photo: thumbnail source == payload.
+                    val thumbnailBytes: ByteArray
+                    if (isVideo) {
+                        val poster = crawler.readPosterFrame(asset)
+                        if (poster == null) {
+                            _state.update { it.copy(lastError = "Couldn't read video poster: ${asset.fileName}") }
+                            continue
+                        }
+                        thumbnailBytes = poster
+                    } else {
+                        thumbnailBytes = bytes
+                    }
+                    val request = builder.build(asset, bytes, thumbnailBytes)
                     if (uploader.enqueue(request)) {
                         request.metadata.appData.uniqueId?.let { ledger.record(asset.deviceAssetId, it) }
                         bumpDone()
@@ -159,5 +180,6 @@ class BackupManager(
 
     private companion object {
         const val TAG = "BackupManager"
+        const val MAX_VIDEO_BYTES = 200L * 1024 * 1024   // provisional: skip until streaming upload lands
     }
 }

@@ -895,4 +895,34 @@ class OutboxSync(
         }
         Logger.i("OutboxSync: clearCheckout() DONE — checked $cleared row(s) back in (waited ${UnixTimeUtc.now().milliseconds - start}ms)")
     }
+
+    /**
+     * Suspends until the outbox has drained — no send worker active and nothing due to send right
+     * now — or [timeoutMs] elapses. Returns true if fully drained, false on timeout. Lets a
+     * background task (Android [BackupWorker], a future iOS BGTask) keep its process alive until
+     * queued uploads actually ship, instead of returning the moment rows are enqueued. Only kicks
+     * anything if the outbox was already brought online + `send()`-ed by the caller — this just waits.
+     */
+    suspend fun awaitDrained(timeoutMs: Long = DEFAULT_DRAIN_TIMEOUT_MS): Boolean {
+        val start = UnixTimeUtc.now().milliseconds
+        while (true) {
+            val nextDueMs = databaseManager.outbox.nextScheduled()?.milliseconds
+            val nowMs = UnixTimeUtc.now().milliseconds
+            if (outboxDrained(activeThreads.value, nextDueMs, nowMs)) return true
+            if (nowMs - start > timeoutMs) {
+                Logger.w("OutboxSync: awaitDrained() TIMED OUT after ${timeoutMs}ms (active=${activeThreads.value}, nextDue=$nextDueMs)")
+                return false
+            }
+            delay(DRAIN_POLL_MS)
+        }
+    }
 }
+
+/** Outbox is drained when no worker is active and nothing is due to send right now. A row scheduled
+ *  for a future retry (nextDueMs > now) counts as drained — that retry rides the next trigger, not
+ *  this pass, so a background worker never blocks its whole budget on a backed-off row. */
+internal fun outboxDrained(activeThreads: Int, nextDueMs: Long?, nowMs: Long): Boolean =
+    activeThreads == 0 && (nextDueMs == null || nextDueMs > nowMs)
+
+private const val DRAIN_POLL_MS = 100L
+private const val DEFAULT_DRAIN_TIMEOUT_MS = 9 * 60_000L   // under WorkManager's ~10-min worker ceiling

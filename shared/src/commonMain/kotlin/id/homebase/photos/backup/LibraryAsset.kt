@@ -39,14 +39,20 @@ interface PhotoLibraryCrawler {
     suspend fun folders(): List<LibraryFolder>
 
     /**
-     * Image assets in the selected folders only, newest-first. Videos are excluded (out of scope
-     * this wave). An empty [folderIds] selects nothing and returns an empty list — the D6 default,
-     * so enabling backup uploads nothing until folders are deliberately chosen.
+     * Image AND video assets in the selected folders only, newest-first. An empty [folderIds]
+     * selects nothing and returns an empty list — the D6 default, so enabling backup uploads
+     * nothing until folders are deliberately chosen. Video assets carry a `video/` [LibraryAsset.mimeType].
      */
     suspend fun assets(folderIds: Set<String>): List<LibraryAsset>
 
-    /** Original file bytes for [asset], or null if the source vanished / can't be read. */
+    /** Original file bytes for [asset] (byte-for-byte), or null if the source vanished / can't be read. */
     suspend fun readBytes(asset: LibraryAsset): ByteArray?
+
+    /**
+     * A poster-frame image (encoded, e.g. JPEG) for a VIDEO [asset] — the thumbnail source, since
+     * video payload bytes aren't a decodable image. Null for non-video assets or if extraction fails.
+     */
+    suspend fun readPosterFrame(asset: LibraryAsset): ByteArray?
 }
 
 /** No-op crawler for platforms without a native crawler yet (iOS/JVM). Keeps those targets green. */
@@ -54,4 +60,5 @@ class StubPhotoLibraryCrawler : PhotoLibraryCrawler {
     override suspend fun folders(): List<LibraryFolder> = emptyList()
     override suspend fun assets(folderIds: Set<String>): List<LibraryAsset> = emptyList()
     override suspend fun readBytes(asset: LibraryAsset): ByteArray? = null
+    override suspend fun readPosterFrame(asset: LibraryAsset): ByteArray? = null
 }

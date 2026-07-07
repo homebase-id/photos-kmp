@@ -16,6 +16,7 @@ import id.homebase.photos.auth.YouAuthGateway
 import id.homebase.photos.backup.BackupEnabledStore
 import id.homebase.photos.backup.BackupFolderSelectionStore
 import id.homebase.photos.backup.BackupLedger
+import id.homebase.photos.backup.BackgroundBackup
 import id.homebase.photos.backup.BackupManager
 import id.homebase.photos.backup.BackupViewModel
 import id.homebase.photos.backup.OutboxPhotoUploadEnqueuer
@@ -123,6 +124,8 @@ val photosModule = module {
     // Upload seam over the COPIED outbox — never a parallel uploader.
     single<PhotoUploadEnqueuer> { OutboxPhotoUploadEnqueuer(get()) }
     single { BackupManager(crawler = get(), ledger = get(), builder = get(), uploader = get(), selectionStore = get(), enabledStore = get(), scope = get()) }
+    // Background pass entrypoint — shared across platforms; only the trigger (WorkManager / BGTask) is native.
+    single { BackgroundBackup(youAuth = get(), enabledStore = get(), backupManager = get(), repository = get(), outboxSync = get()) }
     factory { BackupViewModel(get()) }
 }
 
@@ -169,6 +172,9 @@ fun loginViewModel(): LoginViewModel = KoinPlatform.getKoin().get()
 
 /** iOS-callable factory: resolves the albums ViewModel from Koin (Swift has no DSL). */
 fun albumsViewModel(): AlbumsViewModel = KoinPlatform.getKoin().get()
+
+/** iOS-callable: the shared background-backup entrypoint. A BGTask handler calls run() (SKIE async). */
+fun backgroundBackup(): BackgroundBackup = KoinPlatform.getKoin().get()
 
 /** iOS-callable factory: album detail VM for [album] over the shared repository. */
 fun albumDetailViewModel(album: AlbumItem): AlbumDetailViewModel =

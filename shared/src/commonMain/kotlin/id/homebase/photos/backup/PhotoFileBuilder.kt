@@ -93,6 +93,12 @@ fun resolvePhotoUserDate(
  * Turns one [LibraryAsset] + its original bytes into a ready-to-enqueue [UploadFileRequest] that
  * matches the existing Odin Photos row format (verified field-by-field by the §2 format gate).
  *
+ * Photo vs video is the same envelope (spec §4: fileType 0, dflt_key payload, poster thumbnail),
+ * distinguished only by the payload MIME. For video the caller passes the original video as
+ * [build]'s `payloadBytes` (byte-for-byte upload + the dedup hash) and a decoded poster frame as
+ * `thumbnailBytes` — video bytes aren't a decodable image, so the thumbnail pipeline runs on the
+ * poster. For photos the two are the same array (the default).
+ *
  * Encryption is the builder's job — the copied upload path streams payload/thumbnail bytes RAW.
  * So the payload is pre-encrypted to a ciphertext temp file and each thumbnail's bytes are
  * ciphertext, all under ONE file aesKey with a DISTINCT per-payload IV (the per-payload-IV rule);
@@ -104,9 +110,15 @@ class PhotoFileBuilder(
     private val driveId: Uuid,
     private val zoneProvider: () -> TimeZone = { TimeZone.currentSystemDefault() },
 ) {
-    suspend fun build(asset: LibraryAsset, bytes: ByteArray): UploadFileRequest {
-        val meta = readImageMetadata(bytes)
-        val uniqueId = deterministicPhotoUniqueId(bytes)
+    suspend fun build(
+        asset: LibraryAsset,
+        payloadBytes: ByteArray,
+        thumbnailBytes: ByteArray = payloadBytes,   // video: a poster frame; photo: the same bytes
+    ): UploadFileRequest {
+        // Metadata + thumbnails come from the IMAGE (photo bytes, or the video's poster frame). The
+        // dedup id + payload come from the ORIGINAL bytes so a video hashes/uploads as itself.
+        val meta = readImageMetadata(thumbnailBytes)
+        val uniqueId = deterministicPhotoUniqueId(payloadBytes)
         val userDate = resolvePhotoUserDate(meta, asset.takenAtMillis, asset.addedAtMillis, zoneProvider())
         val contentJson = photoContentJson(meta, asset.fileName)
 
@@ -114,8 +126,8 @@ class PhotoFileBuilder(
         // payload carries [20, 300, 1200] like the real rows. getRevisedThumbs may drop tiers above
         // the source size, so a small photo yields fewer — that's expected (1..3 tiers).
         val (naturalSize, embeddedTiny, tierThumbs) =
-            createThumbnails(bytes, PhotoConfig.PAYLOAD_KEY, thumbSizes = listOf(THUMB_300, THUMB_1200))
-        val tinyFile = createImageThumbnail(bytes, PhotoConfig.PAYLOAD_KEY, tinyThumbSize, isTinyThumb = true)
+            createThumbnails(thumbnailBytes, PhotoConfig.PAYLOAD_KEY, thumbSizes = listOf(THUMB_300, THUMB_1200))
+        val tinyFile = createImageThumbnail(thumbnailBytes, PhotoConfig.PAYLOAD_KEY, tinyThumbSize, isTinyThumb = true)
         val plainThumbnails = listOf(tinyFile) + tierThumbs
 
         // One content key for the file; file IV for metadata, a distinct payload IV for bytes+thumbs.
@@ -128,12 +140,12 @@ class PhotoFileBuilder(
         // CacheSweeper wipes cacheDir on launch — a cache temp would die before its outbox row
         // drains. writeBytesToOutboxTempFile targets the sweeper-invisible outbox staging dir,
         // reaped only when the row completes / permanently drops (chat-kmp #842 convention).
-        val cipher = payloadKeyHeader.encryptDataAes(bytes)
+        val cipher = payloadKeyHeader.encryptDataAes(payloadBytes)
         val encPath = fileOps.writeBytesToOutboxTempFile(cipher, prefix = "photo_enc_", suffix = ".enc")
         val payload = PayloadFile(
             key = PhotoConfig.PAYLOAD_KEY,
             filePath = encPath,
-            contentType = asset.mimeType ?: sniffImageMime(bytes) ?: DEFAULT_CONTENT_TYPE,
+            contentType = asset.mimeType ?: sniffImageMime(payloadBytes) ?: DEFAULT_CONTENT_TYPE,
             isPreEncrypted = true,
             iv = payloadKeyHeader.iv,
         )

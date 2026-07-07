@@ -87,6 +87,7 @@ class BackupManagerTest {
         val byFolder: Map<String, List<LibraryAsset>>,
         val folderList: List<LibraryFolder> = emptyList(),
         val bytesFor: (LibraryAsset) -> ByteArray? = { image },
+        val posterFor: (LibraryAsset) -> ByteArray? = { null },
     ) : PhotoLibraryCrawler {
         var readCount = 0
         var assetsCallCount = 0
@@ -101,6 +102,7 @@ class BackupManagerTest {
             readCount++
             return bytesFor(asset)
         }
+        override suspend fun readPosterFrame(asset: LibraryAsset): ByteArray? = posterFor(asset)
     }
 
     private fun singleFolder(
@@ -212,6 +214,48 @@ class BackupManagerTest {
         assertNotNull(ledger.backedUpFileId("mgr-dedup-1"))
         assertNotNull(ledger.backedUpFileId("mgr-dedup-3"))
         assertNotNull(ledger.backedUpFileId("mgr-dedup-5"))
+    }
+
+    @Test
+    fun video_buildsThumbnailsFromPosterAndPayloadFromVideoBytes() = runTest {
+        val videoBytes = "not-an-image-just-raw-video-bytes".toByteArray() // not decodable as an image
+        val clip = LibraryAsset(
+            deviceAssetId = "vid:9", fileName = "clip.mp4", mimeType = "video/mp4",
+            takenAtMillis = 2_000_000L, addedAtMillis = null, sizeBytes = videoBytes.size.toLong(),
+        )
+        // Poster is a real decodable image (dice.png) so the thumbnail pipeline runs on it, not the video.
+        val crawler = FakeCrawler(mapOf("f" to listOf(clip)), bytesFor = { videoBytes }, posterFor = { image })
+        val uploader = FakeUploader()
+        selectionStore.setSelected(setOf("f"))
+        val manager = BackupManager(crawler, ledger, builder, uploader, selectionStore, enabledStore, backgroundScope)
+
+        manager.backupNow()
+
+        val req = uploader.requests.single()
+        assertEquals("video/mp4", req.payloads.single().contentType, "payload MIME is the video's")
+        assertEquals(
+            deterministicPhotoUniqueId(videoBytes), req.metadata.appData.uniqueId,
+            "dedup id hashes the ORIGINAL video bytes, not the poster",
+        )
+        assertTrue(req.thumbnails.isNotEmpty(), "thumbnails come from the poster frame")
+    }
+
+    @Test
+    fun video_overMaxSize_isSkippedWithoutReadingOrUploading() = runTest {
+        val huge = LibraryAsset(
+            deviceAssetId = "vid:99", fileName = "huge.mp4", mimeType = "video/mp4",
+            takenAtMillis = 3_000_000L, addedAtMillis = null, sizeBytes = 201L * 1024 * 1024,
+        )
+        val crawler = FakeCrawler(mapOf("f" to listOf(huge)), bytesFor = { image }, posterFor = { image })
+        val uploader = FakeUploader()
+        selectionStore.setSelected(setOf("f"))
+        val manager = BackupManager(crawler, ledger, builder, uploader, selectionStore, enabledStore, backgroundScope)
+
+        manager.backupNow()
+
+        assertEquals(0, uploader.requests.size, "an oversize video never uploads")
+        assertEquals(0, crawler.readCount, "and is skipped before its bytes are read")
+        assertNotNull(manager.state.value.lastError, "the skip surfaces as an error")
     }
 
     @Test

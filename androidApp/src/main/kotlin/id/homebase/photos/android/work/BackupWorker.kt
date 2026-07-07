@@ -9,15 +9,14 @@ import android.os.Build
 import androidx.work.CoroutineWorker
 import androidx.work.ForegroundInfo
 import androidx.work.WorkerParameters
-import id.homebase.photos.backup.BackupEnabledStore
-import id.homebase.photos.backup.BackupManager
+import id.homebase.photos.backup.BackgroundBackup
 import org.koin.core.context.GlobalContext
 
 /**
- * Runs one idempotent backup pass. Resolves the shared [BackupManager] from the global Koin graph
- * (the same singleton the UI observes) and calls [BackupManager.backupNow]. Used both as the
- * expedited one-shot (toggle-on) and the 6h periodic worker — [BackupScheduler] owns scheduling.
- * Gates on the persisted enabled flag so stale triggers (media watch, periodic) stay silent.
+ * Runs one idempotent background backup pass by delegating to the shared [BackgroundBackup] (the same
+ * sequence a future iOS BGTask handler will call): gate on enabled → enqueue → drain the outbox,
+ * suspending until the uploads actually land. Used both as the expedited one-shot (toggle-on) and the
+ * 6h periodic worker — [BackupScheduler] owns scheduling. This class is the Android trigger only.
  */
 class BackupWorker(
     appContext: Context,
@@ -25,13 +24,11 @@ class BackupWorker(
 ) : CoroutineWorker(appContext, params) {
 
     override suspend fun doWork(): Result {
-        val koin = GlobalContext.get()
-        if (!koin.get<BackupEnabledStore>().enabled()) return Result.success()
-
-        val manager = koin.get<BackupManager>()
+        val runner = GlobalContext.get().get<BackgroundBackup>()
         return try {
-            manager.backupNow()
-            Result.success()
+            // run() returns false if the outbox didn't fully drain in budget (offline/slow) — retry.
+            if (runner.run()) Result.success()
+            else if (runAttemptCount < MAX_ATTEMPTS) Result.retry() else Result.failure()
         } catch (t: Throwable) {
             // Transient failures (network/outbox) get a few retries before giving up this pass.
             if (runAttemptCount < MAX_ATTEMPTS) Result.retry() else Result.failure()

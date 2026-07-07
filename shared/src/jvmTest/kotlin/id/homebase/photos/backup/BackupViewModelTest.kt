@@ -63,6 +63,7 @@ class BackupViewModelTest {
         override suspend fun folders() = list
         override suspend fun assets(folderIds: Set<String>): List<LibraryAsset> = emptyList()
         override suspend fun readBytes(asset: LibraryAsset): ByteArray? = null
+        override suspend fun readPosterFrame(asset: LibraryAsset): ByteArray? = null
     }
 
     private val noopUploader = object : PhotoUploadEnqueuer {
