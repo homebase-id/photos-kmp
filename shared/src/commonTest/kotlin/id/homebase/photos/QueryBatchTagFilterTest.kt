@@ -18,6 +18,18 @@ class QueryBatchTagFilterTest {
         assertEquals(listOf(albumId), q.tagsMatchAtLeastOne)
         // album membership must NOT collapse the whole library — no broad tag-all filter
         assertNull(q.tagsMatchAll)
+        // official Odin Photos album query: none / archived / apps — everything but the bin
+        assertEquals(listOf(0, 1, 3), q.archivalStatus)
+    }
+
+    @Test fun albumQueryPagesTheGridButCanAskForJustTheCover() {
+        val albumId = Uuid.random()
+
+        assertEquals(
+            PhotoQueries.ALBUM_PAGE_SIZE,
+            PhotoQueries.albumQuery(albumId).resultOptionsRequest.maxRecords,
+        )
+        assertEquals(1, PhotoQueries.albumQuery(albumId, maxRecords = 1).resultOptionsRequest.maxRecords)
     }
 
     @Test fun albumQuerySortsByUserDateNewestFirst() {

@@ -17,13 +17,21 @@ object PhotoQueries {
         includeMetadataHeader = true,
     )
 
-    /** Photos tagged into [albumId], newest first. */
-    fun albumQuery(albumId: Uuid): QueryBatchRequest = QueryBatchRequest(
+    // ponytail: 500-photo album ceiling (queryBatch's own default is 100 — too low to page an
+    // album grid off); cursor-page it when someone actually hits this.
+    const val ALBUM_PAGE_SIZE = 500
+
+    // Official Odin Photos album query: none(0) / archived(1) / apps(3) — everything but the bin.
+    private val albumArchivalStatus = listOf(0, 1, 3)
+
+    /** Photos tagged into [albumId], newest first. [maxRecords] 1 gives the cover photo. */
+    fun albumQuery(albumId: Uuid, maxRecords: Int = ALBUM_PAGE_SIZE): QueryBatchRequest = QueryBatchRequest(
         queryParams = FileQueryParams(
             fileType = listOf(PhotoConfig.PHOTO_FILE_TYPE),
             tagsMatchAtLeastOne = listOf(albumId),
+            archivalStatus = albumArchivalStatus,
         ),
-        resultOptionsRequest = newestByUserDate,
+        resultOptionsRequest = newestByUserDate.copy(maxRecords = maxRecords),
     )
 
     /** Whole-library timeline, newest first. */

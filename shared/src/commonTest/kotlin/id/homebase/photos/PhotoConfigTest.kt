@@ -20,4 +20,11 @@ class PhotoConfigTest {
     @Test fun appIdIsTheEstablishedPhotosRegistration() {
         assertTrue(PhotoConfig.APP_ID == "32f0bdbf-017f-4fc0-8004-2d4631182d1e")
     }
+    // Official Odin Photos: AlbumDefinitionFileType 400, PhotoLibraryMetadataFileType 900.
+    // We shipped 900 for albums, which read the library-metadata file instead — never again.
+    @Test fun albumFileTypeIsTheOfficialAlbumDefinition() {
+        assertTrue(PhotoConfig.ALBUM_FILE_TYPE == 400)
+        assertTrue(PhotoConfig.LIBRARY_METADATA_FILE_TYPE == 900)
+        assertFalse(PhotoConfig.ALBUM_FILE_TYPE == PhotoConfig.LIBRARY_METADATA_FILE_TYPE)
+    }
 }

@@ -12,7 +12,11 @@ object PhotoConfig {
 
     const val PHOTO_FILE_TYPE = 0
     const val PHOTO_DATA_TYPE = 0
-    const val ALBUM_FILE_TYPE = 900
+
+    // Official Odin Photos values (photo-app PhotoTypes.ts): albums are 400; 900 is the
+    // library-metadata singleton, NOT an album (Batch E reads it).
+    const val ALBUM_FILE_TYPE = 400
+    const val LIBRARY_METADATA_FILE_TYPE = 900
 
     const val PAYLOAD_KEY = "dflt_key" // satisfies ^[a-z0-9_]{8,10}$
 
