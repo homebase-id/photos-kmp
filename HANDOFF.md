@@ -19,7 +19,48 @@ target is now **26.0** (bumped on `photos-mvp` `32ebd7e`, merged here), so Liqui
 agents in parallel → one verifier build pass. Shared `StateFlow<UiState>` stays the source of truth; new on-drive formats
 need owner schema sign-off.
 
-**Batch B — Viewer (done, uncommitted on `photos-ui-batch-b`; 2026-07-25 evening):**
+**Batch C — Collections & album management (done, review-clean on `photos-ui-batch-c` `a6d8cf2..7da26ff`; 2026-07-25 night; on-device QA outstanding):**
+- **SCHEMA (owner-signed, supersedes spec §4's album detail):** the official Odin Photos app source at
+  `~/Documents/GitHub/photo-app` (+ js-lib in `~/Documents/GitHub/dotyoucore-js`) is the album-schema source of truth.
+  **Album = fileType 400** — NOT 900 (900 = the PhotoLibraryMetadata file; our shipped read path queried 900 and could
+  never see real albums — fixed this batch). Album identity = bare-hex (no dashes) UUID in content JSON `tag` +
+  `appData.uniqueId`; `appData.tags` is EMPTY on album files. Content `{name, description?, tag, coverFileId?}` —
+  `coverFileId` is OUR owner-approved extension (official app has no stored cover; fallback = newest member photo).
+  Membership = album tag in the PHOTO file's `appData.tags`, written per-photo via header-only `updateFileByFileId`
+  (fresh header, keep aesKey, rotate IV, carry versionTag + EVERY appData field + `allowDistribution`, re-encrypt
+  content; VersionTagMismatch → re-fetch retry ×3). Delete = softDeleteFile of the album file only (dangling member
+  tags are official behavior). Full evidence + shapes: `docs/superpowers/plans/2026-07-25-ui-batch-c-album-schema.md`.
+- **Shared:** `PhotoConfig.ALBUM_FILE_TYPE=400` + `LIBRARY_METADATA_FILE_TYPE=900`; `AlbumMapper` rewritten (identity
+  from content.tag, lenient, unknown-field-preserving `patchAlbumContent` over raw JsonObject); mutations
+  `createAlbum/renameAlbum/setCover/deleteAlbum/addPhotos/removePhotos` via `AlbumWriter` over an `AlbumDriveGateway`
+  seam (+ `HeaderPatchRetry`); `AlbumsViewModel` (create/rename/delete/setCover/addToAlbum/createAlbumWithPhotos, each
+  fire-and-forget + `AndWait`, events sealed `AlbumsEvent` incl. `Busy`; silent `reconcile()` that unions
+  not-yet-indexed optimistic albums and preserves covers); `AlbumDetailViewModel` selection = Timeline parity +
+  `removeSelected`. 59 album tests; `:shared:jvmTest` 1100 green.
+- **Android:** Collections hub = library rows (Favorites/Archive/Trash/Utilities, disabled "Soon" until D) + album grid;
+  album detail long-press selection (`SelectionTopBar` gained `onAction`/`extraActions` — Timeline unaffected), overflow
+  Rename/Delete/Set-as-cover (single-selection-gated), remove-from-album; Create sheet → real create dialog → opens
+  album; add-to-album picker from Timeline + Viewer selection (components: `LibraryRow`, `NameInputDialog`,
+  `AlbumMenu`, `AlbumPickerSheet`). `NewAlbumScreen`/`Route.Create` placeholder deleted.
+- **iOS:** same features SwiftUI-native (`CollectionsView` + `LibrarySection`, `AlbumDetailView` selection +
+  menu, `AlbumNameSheet`, `AddToAlbumSheet`; viewer got a 4th action `viewer-addto`); `CollectionsModel`→`AlbumsModel`
+  rename; `.hbAlbumsChanged` notification keeps the hub fresh across screens (mirrors `.hbPhotosChanged`);
+  `album-setcover` lives on the selection bar (nav bar hidden during selection — deliberate deviation). New
+  `CollectionsHubUITest` + `AlbumLifecycleUITest` (real-drive, self-cleaning, XCTSkip-gated on login).
+- **New ids (both platforms):** `collections-library-row-{favorites,archive,trash,utilities}`, `album-menu`,
+  `album-rename`, `album-delete`, `album-setcover`, `album-remove`, `create-album-dialog`, `addto-album-sheet`.
+- **Verified:** full matrix green (shared android+iosSim compile, `:shared:jvmTest` 1100/0, `:androidApp:assembleDebug`
+  + androidTest compile, iOS `build-for-testing` incl. UITest runner). Gotcha for future verifiers: suspend funs
+  returning Kotlin primitives bridge to Swift as boxed `KotlinBoolean` (`.boolValue`); the real Android task name is
+  `:shared:compileAndroidMain`.
+- **Outstanding — on-device QA is the ship gate** (Redmi + iOS sim, owner login needed): create → visible in official
+  web app (checks our dashed `uniqueId` + bare-hex tag interop); add-from-timeline / remove / rename / delete round-trip;
+  old-900 "albums" (if any were minted pre-C) are now invisible by design; local DriveMainIndex picks up fileType-400
+  rows; add-to-album of a large selection (N sequential PATCHes, no progress UI yet). Deferred minors live in the batch
+  ledger (dual SnackbarHost overlap, membership-only writes skip `.hbAlbumsChanged`, no retry backoff, write-only
+  AlbumsViewModel cost in Create tab — Batch D cleanup candidates).
+
+**Batch B — Viewer (done, committed `a6d8cf2` on `photos-ui-batch-b`, merged into `photos-ui-batch-c`; 2026-07-25 evening):**
 - **Contract:** `docs/superpowers/plans/2026-07-25-ui-batch-b-contracts.md` (frozen before the parallel writers ran).
 - **Shared:** `viewer/ViewerViewModel` (`ViewerUiState` items/index/isDeleting/`deletedAny`, events `Error`/`Closed`,
   `setIndex` clamped, `deleteCurrent[AndWait]` mirroring Timeline's delete) + `viewer/VideoHandle`. `PhotosRepository`
