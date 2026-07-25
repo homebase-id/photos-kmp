@@ -98,7 +98,9 @@ internal object AlbumWriteSchema {
             KeyHeader(iv = ByteArrayUtil.getRndByteArray(16), aesKey = existing.keyHeader.aesKey)
         } else null
         val metadata = UploadFileMetadata(
-            allowDistribution = false,
+            // Carried, not defaulted: a header update replaces wholesale, so hardcoding false
+            // would silently un-distribute a shared photo the moment it joins an album.
+            allowDistribution = existing.serverMetadata.allowDistribution,
             isEncrypted = encrypted,
             accessControlList = null, // omitted — the server keeps the file's existing ACL
             appData = appData,

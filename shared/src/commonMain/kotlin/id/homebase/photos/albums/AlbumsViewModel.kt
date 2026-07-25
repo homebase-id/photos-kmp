@@ -219,17 +219,24 @@ class AlbumsViewModel(
             Logger.w(tag = TAG) { "post-write reload failed: ${e.message}" }
             return // keep the optimistic state
         }
-        val cached = _state.value.albums.associateBy { it.album.fileId }
+        val current = _state.value.albums
+        val cached = current.associateBy { it.album.fileId }
         fun reusableCover(album: AlbumItem): PhotoItem? = cached[album.fileId]
             ?.takeIf { it.album.coverFileId == album.coverFileId }
             ?.cover
-        _state.update { s -> s.copy(albums = albums.map { AlbumSummary(it, reusableCover(it)) }) }
+        // The sync may not have indexed a just-created album file yet — dropping it here would
+        // yank the album out from under the screen that is already showing it.
+        val loadedIds = albums.map { it.fileId }.toSet()
+        val pending = current.filterNot { it.album.fileId in loadedIds }
+        _state.update { s ->
+            s.copy(albums = albums.map { AlbumSummary(it, reusableCover(it)) } + pending)
+        }
         val summaries = coroutineScope {
             albums.map { album ->
                 async { AlbumSummary(album, reusableCover(album) ?: resolveCover(album)) }
             }.awaitAll()
         }
-        _state.update { it.copy(albums = summaries) }
+        _state.update { it.copy(albums = summaries + pending) }
     }
 
     private fun replaceAlbum(album: AlbumItem) {

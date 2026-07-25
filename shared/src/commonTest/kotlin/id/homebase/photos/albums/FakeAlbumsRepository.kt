@@ -26,6 +26,8 @@ internal class FakeAlbumsRepository(
     val photosGate: CompletableDeferred<Unit>? = null,
     /** Parks [createAlbum] so a test can fire a second write while the first is in flight. */
     val writeGate: CompletableDeferred<Unit>? = null,
+    /** A created album stays out of [loadAlbums] — the sync hasn't indexed the file yet. */
+    var indexLagsWrites: Boolean = false,
 ) : AlbumsRepository {
 
     val albums: MutableList<AlbumItem> = albums.toMutableList()
@@ -78,7 +80,7 @@ internal class FakeAlbumsRepository(
             coverFileId = null,
             description = description,
         )
-        albums += album
+        if (!indexLagsWrites) albums += album
         return album
     }
 

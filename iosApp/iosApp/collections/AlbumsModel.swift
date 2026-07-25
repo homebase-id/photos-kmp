@@ -24,8 +24,22 @@ final class AlbumsModel: ObservableObject {
     private var observeTask: Task<Void, Never>?
     private var eventsTask: Task<Void, Never>?
     private var toastHideTask: Task<Void, Never>?
+    private var albumsChangedObserver: NSObjectProtocol?
 
-    var albums: [AlbumSummary] { uiState?.albums ?? [] }
+    /// Covers already resolved, keyed exactly like the shared reconcile (a re-pinned cover misses
+    /// and re-resolves). A reload republishes every album with a nil cover before resolution
+    /// lands, which would blank the grid on a refresh nobody asked for.
+    private var coverCache: [String: (pinned: String?, photo: PhotoItem)] = [:]
+
+    var albums: [AlbumSummary] {
+        (uiState?.albums ?? []).map { summary in
+            guard summary.cover == nil,
+                  let cached = coverCache[summary.album.fileId.description],
+                  cached.pinned == summary.album.coverFileId?.description
+            else { return summary }
+            return AlbumSummary(album: summary.album, cover: cached.photo)
+        }
+    }
     var isMutating: Bool { uiState?.isMutating == true }
 
     /// Idempotent: wires the state + events subscriptions exactly once. Write-only hosts skip
@@ -38,6 +52,7 @@ final class AlbumsModel: ObservableObject {
         observeTask = Task { [weak self] in
             for await s in states {
                 guard let self else { return }
+                self.cacheCovers(s.albums)
                 self.uiState = s
             }
         }
@@ -48,6 +63,29 @@ final class AlbumsModel: ObservableObject {
                 if let message = AlbumsEventText.message(for: e) { self.show(message) }
             }
         }
+        // Another screen wrote an album — reload, silently (the cover cache carries the grid).
+        albumsChangedObserver = NotificationCenter.default.addObserver(
+            forName: .hbAlbumsChanged, object: nil, queue: .main
+        ) { [weak self] note in
+            MainActor.assumeIsolated {
+                guard let self, (note.object as AnyObject?) !== self else { return }
+                self.vm.refresh()
+            }
+        }
+    }
+
+    private func cacheCovers(_ summaries: [AlbumSummary]) {
+        for summary in summaries {
+            guard let cover = summary.cover else { continue }
+            coverCache[summary.album.fileId.description] =
+                (summary.album.coverFileId?.description, cover)
+        }
+    }
+
+    /// Every screen owns its own `AlbumsViewModel`, so a write here is invisible to the rest
+    /// until they hear this.
+    private func announceAlbumsChanged() {
+        NotificationCenter.default.post(name: .hbAlbumsChanged, object: self)
     }
 
     // MARK: - Intents
@@ -57,14 +95,18 @@ final class AlbumsModel: ObservableObject {
     // ids are always mapped straight off a `PhotoItem`/`AlbumItem` at the call site.
 
     func create(name: String) async -> AlbumItem? {
-        (try? await vm.createAlbumAndWait(name: name)) ?? nil
+        let album = (try? await vm.createAlbumAndWait(name: name)) ?? nil
+        if album != nil { announceAlbumsChanged() }
+        return album
     }
 
     func create(name: String, with photos: [PhotoItem]) async -> AlbumItem? {
-        (try? await vm.createAlbumWithPhotosAndWait(
+        let album = (try? await vm.createAlbumWithPhotosAndWait(
             name: name,
             fileIds: photos.map { $0.fileId }
         )) ?? nil
+        if album != nil { announceAlbumsChanged() }
+        return album
     }
 
     /// Tags `photos` into `album`. Membership is one header patch per photo, so a partial result
@@ -83,16 +125,22 @@ final class AlbumsModel: ObservableObject {
     }
 
     func rename(_ album: AlbumItem, to newName: String) async -> AlbumItem? {
-        (try? await vm.renameAndWait(album: album, newName: newName)) ?? nil
+        let renamed = (try? await vm.renameAndWait(album: album, newName: newName)) ?? nil
+        if renamed != nil { announceAlbumsChanged() }
+        return renamed
     }
 
     func delete(_ album: AlbumItem) async -> Bool {
         // A suspend fun returning a primitive bridges as boxed KotlinBoolean.
-        (try? await vm.deleteAndWait(album: album))?.boolValue ?? false
+        let deleted = (try? await vm.deleteAndWait(album: album))?.boolValue ?? false
+        if deleted { announceAlbumsChanged() }
+        return deleted
     }
 
     func setCover(_ album: AlbumItem, photo: PhotoItem) async -> AlbumItem? {
-        (try? await vm.setCoverAndWait(album: album, photoFileId: photo.fileId)) ?? nil
+        let updated = (try? await vm.setCoverAndWait(album: album, photoFileId: photo.fileId)) ?? nil
+        if updated != nil { announceAlbumsChanged() }
+        return updated
     }
 
     /// Transient bottom capsule (auto-hides after 4s; a newer message restarts the clock).
@@ -111,6 +159,9 @@ final class AlbumsModel: ObservableObject {
         observeTask?.cancel()
         eventsTask?.cancel()
         toastHideTask?.cancel()
+        if let albumsChangedObserver {
+            NotificationCenter.default.removeObserver(albumsChangedObserver)
+        }
     }
 }
 

@@ -43,6 +43,7 @@ class AlbumWriteSchemaTest {
         tags: List<Uuid>? = null,
         content: String? = """{"originalFileName":"IMG_1.jpg"}""",
         encrypted: Boolean = true,
+        allowDistribution: Boolean = false,
     ): HomebaseFile = HomebaseFile(
         fileId = PHOTO_FILE_ID,
         driveId = DRIVE_ID,
@@ -66,7 +67,7 @@ class AlbumWriteSchemaTest {
                 archivalStatus = ArchivalStatus.None,
             ),
         ),
-        serverMetadata = ServerMetadata(),
+        serverMetadata = ServerMetadata(allowDistribution = allowDistribution),
     )
 
     // --- CREATE ---------------------------------------------------------------------------
@@ -190,7 +191,7 @@ class AlbumWriteSchemaTest {
 
     @Test
     fun headerUpdateRequest_keepsAesKeyRotatesIvAndCarriesVersionTag() = runTest {
-        val existing = photoFile(tags = listOf(OTHER_ALBUM))
+        val existing = photoFile(tags = listOf(OTHER_ALBUM), allowDistribution = true)
         val appData = AlbumWriteSchema.carryOverAppData(
             existing.fileMetadata.appData,
             tags = AlbumWriteSchema.withTag(existing.fileMetadata.appData.tags, ALBUM_TAG),
@@ -207,6 +208,10 @@ class AlbumWriteSchemaTest {
         assertEquals(listOf(OTHER_ALBUM, ALBUM_TAG), request.metadata.appData.tags)
         assertTrue(request.metadata.isEncrypted)
         assertNull(request.metadata.accessControlList, "omitted so the server keeps the existing ACL")
+        assertTrue(
+            request.metadata.allowDistribution,
+            "a distributed photo must not be silently un-distributed by joining an album",
+        )
     }
 
     @Test

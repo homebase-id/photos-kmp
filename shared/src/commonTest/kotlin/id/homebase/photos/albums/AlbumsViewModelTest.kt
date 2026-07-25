@@ -320,6 +320,24 @@ class AlbumsViewModelTest {
     }
 
     @Test
+    fun postWriteReconcile_keepsAnAlbumTheReloadHasNotIndexedYet() = runTest(dispatcher) {
+        val repo = FakeAlbumsRepository(albums = listOf(album("Trip")), indexLagsWrites = true)
+        val vm = AlbumsViewModel(repo)
+        advanceUntilIdle()
+
+        val created = vm.createAlbumAndWait("Roadtrip")
+        advanceUntilIdle()
+
+        assertNotNull(created)
+        assertEquals(1, repo.syncCount)
+        assertTrue(
+            vm.state.value.albums.any { it.album.fileId == created.fileId },
+            "the reload missed the just-created album — it must not vanish from the grid",
+        )
+        assertEquals(listOf("Trip", "Roadtrip"), vm.state.value.albums.map { it.album.name })
+    }
+
+    @Test
     fun secondWriteWhileOneIsInFlight_isRefusedWithABusyEvent() = runTest(dispatcher) {
         val trip = album("Trip")
         val gate = CompletableDeferred<Unit>()
