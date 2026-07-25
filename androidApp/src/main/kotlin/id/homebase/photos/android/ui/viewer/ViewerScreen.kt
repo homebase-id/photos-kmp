@@ -28,6 +28,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.PhotoAlbum
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -113,6 +114,7 @@ fun ViewerScreen(
     imageLoader: ImageLoader,
     onDismiss: (deletedAny: Boolean) -> Unit,
     modifier: Modifier = Modifier,
+    onAddToAlbum: ((PhotoItem) -> Unit)? = null,
     viewModel: ViewerViewModel = viewModel(
         initializer = { ViewerViewModel(items, initialIndex, GlobalContext.get().get()) },
     ),
@@ -194,6 +196,11 @@ fun ViewerScreen(
 
         if (chromeVisible) {
             val current = state.current
+            val addAction: (() -> Unit)? = if (onAddToAlbum != null && current != null) {
+                { onAddToAlbum(current) }
+            } else {
+                null
+            }
             ViewerChrome(
                 dateLabel = current?.let { formatDate(it.userDate) }.orEmpty(),
                 onBack = ::dismiss,
@@ -206,6 +213,7 @@ fun ViewerScreen(
                 },
                 onDelete = { showDeleteDialog = true },
                 onInfo = { showInfoSheet = true },
+                onAddToAlbum = addAction,
             )
         }
 
@@ -301,6 +309,7 @@ private fun ViewerChrome(
     onShare: () -> Unit,
     onDelete: () -> Unit,
     onInfo: () -> Unit,
+    onAddToAlbum: (() -> Unit)? = null,
 ) {
     val overlay = PhotosTheme.extended.overlayChrome
     val onOverlay = PhotosTheme.extended.onOverlay
@@ -351,8 +360,12 @@ private fun ViewerChrome(
             horizontalArrangement = Arrangement.SpaceEvenly,
             verticalAlignment = Alignment.Bottom,
         ) {
-            // NO favorite / add-to-album — deferred to Batches D/C; don't ship dead buttons.
+            // NO favorite — deferred to Batch D; don't ship dead buttons. Add-to-album only
+            // appears when a host wired it (C3).
             ViewerAction(Icons.Outlined.Share, "Share", "viewer-share", onShare)
+            onAddToAlbum?.let { add ->
+                ViewerAction(Icons.Outlined.PhotoAlbum, "Add", "viewer-addto", add)
+            }
             ViewerAction(Icons.Outlined.Delete, "Delete", "viewer-delete", onDelete)
             ViewerAction(Icons.Outlined.Info, "Info", "viewer-info", onInfo)
         }

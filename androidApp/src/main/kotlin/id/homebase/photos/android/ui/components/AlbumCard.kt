@@ -23,11 +23,13 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import coil3.ImageLoader
 import coil3.compose.AsyncImage
 import id.homebase.photos.albums.AlbumSummary
 import id.homebase.photos.android.ui.homebaseImageData
+import id.homebase.photos.domain.PhotoItem
 import kotlin.uuid.ExperimentalUuidApi
 
 // Album-cover corner radius, Google-Photos style.
@@ -44,29 +46,18 @@ fun AlbumCard(
     modifier: Modifier = Modifier,
     imageLoader: ImageLoader? = null,
 ) {
-    val cover = summary.cover
     Column(
         modifier = modifier
             .clickable(role = Role.Button, onClick = onClick)
             .testTag("album-card"),
     ) {
-        Box(
+        AlbumCover(
+            cover = summary.cover,
+            imageLoader = imageLoader,
             modifier = Modifier
                 .fillMaxWidth()
-                .aspectRatio(1f)
-                .clip(RoundedCornerShape(ALBUM_COVER_RADIUS))
-                .background(placeholderColor()),
-        ) {
-            if (cover != null && imageLoader != null) {
-                AsyncImage(
-                    model = homebaseImageData(photo = cover, requestedSize = GRID_THUMB_SIZE),
-                    imageLoader = imageLoader,
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize(),
-                )
-            }
-        }
+                .aspectRatio(1f),
+        )
         Spacer(Modifier.height(8.dp))
         Text(
             text = summary.album.name,
@@ -76,5 +67,33 @@ fun AlbumCard(
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.padding(horizontal = 4.dp),
         )
+    }
+}
+
+/**
+ * The album's cover image on a flat neutral ground, clipped to [radius] — shared by the album
+ * tile and the add-to-album picker row so a cover looks the same wherever it appears.
+ */
+@Composable
+fun AlbumCover(
+    cover: PhotoItem?,
+    imageLoader: ImageLoader?,
+    modifier: Modifier = Modifier,
+    radius: Dp = ALBUM_COVER_RADIUS,
+) {
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(radius))
+            .background(placeholderColor()),
+    ) {
+        if (cover != null && imageLoader != null) {
+            AsyncImage(
+                model = homebaseImageData(photo = cover, requestedSize = GRID_THUMB_SIZE),
+                imageLoader = imageLoader,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
     }
 }

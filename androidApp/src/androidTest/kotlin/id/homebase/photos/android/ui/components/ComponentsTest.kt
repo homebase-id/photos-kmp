@@ -3,15 +3,26 @@
 package id.homebase.photos.android.ui.components
 
 import androidx.activity.ComponentActivity
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Archive
+import androidx.compose.material.icons.outlined.PhotoAlbum
+import androidx.compose.material.icons.outlined.RemoveCircleOutline
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import id.homebase.photos.android.ui.theme.PhotosTheme
 import id.homebase.photos.domain.PhotoItem
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
@@ -54,7 +65,7 @@ class ComponentsTest {
         var deleted = false
         composeRule.setContent {
             PhotosTheme {
-                SelectionTopBar(count = 2, onClose = { closed = true }, onDelete = { deleted = true })
+                SelectionTopBar(count = 2, onClose = { closed = true }, onAction = { deleted = true })
             }
         }
 
@@ -67,6 +78,107 @@ class ComponentsTest {
 
         assertTrue(closed)
         assertTrue(deleted)
+    }
+
+    @Test
+    fun selectionTopBar_retargetedAction_carriesItsOwnTag_andHostsExtras() {
+        var removed = false
+        var extra = false
+        composeRule.setContent {
+            PhotosTheme {
+                SelectionTopBar(
+                    count = 1,
+                    onClose = {},
+                    onAction = { removed = true },
+                    actionIcon = Icons.Outlined.RemoveCircleOutline,
+                    actionLabel = "Remove from album",
+                    actionTag = "album-remove",
+                    extraActions = {
+                        IconButton(
+                            onClick = { extra = true },
+                            modifier = Modifier.testTag("selection-addto"),
+                        ) {
+                            Icon(Icons.Outlined.PhotoAlbum, contentDescription = "Add to album")
+                        }
+                    },
+                )
+            }
+        }
+
+        composeRule.onNodeWithTag("selection-delete").assertDoesNotExist()
+        composeRule.onNodeWithTag("selection-addto").performClick()
+        composeRule.onNodeWithTag("album-remove").performClick()
+
+        assertTrue(extra)
+        assertTrue(removed)
+    }
+
+    @Test
+    fun nameInputDialog_disablesConfirmUntilNamed_thenReportsTheTrimmedName() {
+        var confirmed: String? = null
+        composeRule.setContent {
+            PhotosTheme {
+                NameInputDialog(
+                    title = "New album",
+                    confirmLabel = "Create",
+                    testTag = "create-album-dialog",
+                    onConfirm = { confirmed = it },
+                    onDismiss = {},
+                )
+            }
+        }
+
+        composeRule.onNodeWithTag("create-album-dialog").assertExists()
+        composeRule.onNodeWithTag("name-dialog-confirm").assertIsNotEnabled()
+
+        composeRule.onNodeWithTag("name-dialog-field").performTextInput("  Hikes  ")
+        composeRule.onNodeWithTag("name-dialog-confirm").performClick()
+
+        assertEquals("Hikes", confirmed)
+    }
+
+    @Test
+    fun albumOverflowMenu_opensAndGatesSetCoverOnASingleSelection() {
+        var renamed = false
+        composeRule.setContent {
+            PhotosTheme {
+                AlbumOverflowMenu(
+                    onRename = { renamed = true },
+                    onSetCover = {},
+                    onDelete = {},
+                    setCoverEnabled = false,
+                )
+            }
+        }
+
+        composeRule.onNodeWithTag("album-menu").performClick()
+        composeRule.onNodeWithTag("album-setcover").assertIsNotEnabled()
+        composeRule.onNodeWithTag("album-delete").assertExists()
+        composeRule.onNodeWithTag("album-rename").performClick()
+
+        assertTrue(renamed)
+    }
+
+    @Test
+    fun libraryRow_disabled_rendersButDoesNotFire() {
+        var clicked = false
+        composeRule.setContent {
+            PhotosTheme {
+                LibraryRow(
+                    icon = Icons.Outlined.Archive,
+                    label = "Archive",
+                    testTag = "collections-library-row-archive",
+                    onClick = { clicked = true },
+                    enabled = false,
+                    trailingLabel = "Soon",
+                )
+            }
+        }
+
+        composeRule.onNodeWithTag("collections-library-row-archive").assertExists()
+        composeRule.onNodeWithTag("collections-library-row-archive").performClick()
+
+        assertFalse(clicked)
     }
 
     @Test

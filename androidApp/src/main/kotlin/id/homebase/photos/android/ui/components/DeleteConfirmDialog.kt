@@ -10,17 +10,26 @@ import androidx.compose.ui.platform.testTag
 
 /**
  * Delete confirmation per contract C5 — destructive confirm tagged `delete-confirm`.
- * Shared by the timeline selection bar and the viewer action bar (DRY, owner directive).
+ * Shared by the timeline selection bar, the viewer action bar, and album deletion (DRY, owner
+ * directive). [title]/[message] override the photo-count copy for non-photo deletions; the
+ * confirm target keeps its tag either way.
  */
 @Composable
-fun DeleteConfirmDialog(count: Int, onConfirm: () -> Unit, onDismiss: () -> Unit) {
+fun DeleteConfirmDialog(
+    count: Int,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+    title: String = if (count == 1) "Delete 1 item?" else "Delete $count items?",
+    message: String = "They'll be removed from your Homebase photo library.",
+    confirmLabel: String = "Delete",
+) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(if (count == 1) "Delete 1 item?" else "Delete $count items?") },
-        text = { Text("They'll be removed from your Homebase photo library.") },
+        title = { Text(title) },
+        text = { Text(message) },
         confirmButton = {
             TextButton(onClick = onConfirm, modifier = Modifier.testTag("delete-confirm")) {
-                Text("Delete", color = MaterialTheme.colorScheme.error)
+                Text(confirmLabel, color = MaterialTheme.colorScheme.error)
             }
         },
         dismissButton = {

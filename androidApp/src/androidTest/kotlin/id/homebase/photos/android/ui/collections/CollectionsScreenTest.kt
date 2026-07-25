@@ -10,6 +10,7 @@ import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTextInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import id.homebase.photos.albums.AlbumSummary
 import id.homebase.photos.albums.AlbumsUiState
@@ -99,6 +100,45 @@ class CollectionsScreenTest {
 
         composeRule.onNodeWithTag("collections-empty").assertExists()
         composeRule.onNodeWithText("No albums yet").assertExists()
+    }
+
+    @Test
+    fun libraryRows_renderAboveTheGrid_andReadAsNotYetAvailable() {
+        val state = AlbumsUiState(isLoading = false, albums = listOf(summary("Hikes")))
+
+        composeRule.setContent {
+            PhotosTheme { CollectionsScreen(state = state, onAlbumClick = {}) }
+        }
+
+        composeRule.onNodeWithTag("collections-library-row-favorites").assertExists()
+        composeRule.onNodeWithTag("collections-library-row-archive").assertExists()
+        composeRule.onNodeWithTag("collections-library-row-trash").assertExists()
+        composeRule.onNodeWithTag("collections-library-row-utilities").assertExists()
+        composeRule.onNodeWithText("Favorites").assertExists()
+        composeRule.onNodeWithTag("collections-grid").assertExists()
+    }
+
+    @Test
+    fun createAction_opensTheDialog_andReportsTheName() {
+        val state = AlbumsUiState(isLoading = false, albums = listOf(summary("Hikes")))
+        var created: String? = null
+
+        composeRule.setContent {
+            PhotosTheme {
+                CollectionsScreen(
+                    state = state,
+                    onAlbumClick = {},
+                    onCreateAlbum = { created = it },
+                )
+            }
+        }
+
+        composeRule.onNodeWithTag("collections-create").performClick()
+        composeRule.onNodeWithTag("create-album-dialog").assertExists()
+        composeRule.onNodeWithTag("name-dialog-field").performTextInput("Trips")
+        composeRule.onNodeWithTag("name-dialog-confirm").performClick()
+
+        assertEquals("Trips", created)
     }
 
     @Test

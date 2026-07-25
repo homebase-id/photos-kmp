@@ -8,7 +8,6 @@ package id.homebase.photos.android.ui.nav
 sealed class Route(val path: String) {
     data object Photos : Route("photos")
     data object Collections : Route("collections")
-    data object Create : Route("create")
     data object Search : Route("search")
 
     data object AlbumDetail : Route("album/{albumId}") {

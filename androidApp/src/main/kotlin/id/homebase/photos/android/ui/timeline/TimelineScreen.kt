@@ -17,8 +17,12 @@ import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.PhotoAlbum
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
@@ -113,6 +117,7 @@ fun TimelineScreen(
     onToggleSelection: (PhotoItem) -> Unit = {},
     onClearSelection: () -> Unit = {},
     onDeleteSelected: () -> Unit = {},
+    onAddToAlbum: (() -> Unit)? = null,
     imageLoader: ImageLoader? = null,
     snackbarHostState: SnackbarHostState = remember { SnackbarHostState() },
     modifier: Modifier = Modifier,
@@ -136,7 +141,18 @@ fun TimelineScreen(
                 SelectionTopBar(
                     count = state.selectedIds.size,
                     onClose = onClearSelection,
-                    onDelete = { showDeleteDialog = true },
+                    onAction = { showDeleteDialog = true },
+                    extraActions = {
+                        // C3: add-to-album sits next to the trash while photos are selected.
+                        onAddToAlbum?.let { add ->
+                            IconButton(onClick = add, modifier = Modifier.testTag("selection-addto")) {
+                                Icon(
+                                    imageVector = Icons.Outlined.PhotoAlbum,
+                                    contentDescription = "Add to album",
+                                )
+                            }
+                        }
+                    },
                 )
             } else {
                 PhotosTopBar(

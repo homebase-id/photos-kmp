@@ -6,6 +6,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountCircle
@@ -23,6 +24,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
@@ -74,15 +76,22 @@ fun PhotosTopBar(
 }
 
 /**
- * Selection-mode top bar (contract C4/C5): X exits selection, "N selected" title, trash action.
- * Swapped in for [PhotosTopBar] while any photo is selected.
+ * Selection-mode top bar (contract C4/C5): X exits selection, "N selected" title, one primary
+ * action. Swapped in for [PhotosTopBar] while any photo is selected. The primary action defaults
+ * to the timeline's trash; the album detail screen re-points it at remove-from-album, and both
+ * hang their own extras (add-to-album, the album overflow menu) off [extraActions] — one bar, not
+ * two near-identical copies.
  */
 @Composable
 fun SelectionTopBar(
     count: Int,
     onClose: () -> Unit,
-    onDelete: () -> Unit,
+    onAction: () -> Unit,
     modifier: Modifier = Modifier,
+    actionIcon: ImageVector = Icons.Outlined.Delete,
+    actionLabel: String = "Delete selected",
+    actionTag: String = "selection-delete",
+    extraActions: @Composable RowScope.() -> Unit = {},
 ) {
     TopAppBar(
         title = {
@@ -98,8 +107,9 @@ fun SelectionTopBar(
             }
         },
         actions = {
-            IconButton(onClick = onDelete, modifier = Modifier.testTag("selection-delete")) {
-                Icon(imageVector = Icons.Outlined.Delete, contentDescription = "Delete selected")
+            extraActions()
+            IconButton(onClick = onAction, modifier = Modifier.testTag(actionTag)) {
+                Icon(imageVector = actionIcon, contentDescription = actionLabel)
             }
         },
         colors = TopAppBarDefaults.topAppBarColors(
