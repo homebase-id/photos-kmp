@@ -2,7 +2,7 @@ name: iosApp
 options:
   bundleIdPrefix: id.homebase
   deploymentTarget:
-    iOS: "18.2"
+    iOS: "26.0"
   createIntermediateGroups: true
 
 settings:
@@ -20,14 +20,29 @@ targets:
       # iosApp/timeline/ (TimelineView.swift, ThumbnailLoader.swift) and ContentView/iOSApp.
       - path: iosApp
       - path: Theme
+    # A real Info.plist (not INFOPLIST_KEY_* build settings): the background-backup keys are
+    # arrays (UIBackgroundModes, BGTaskSchedulerPermittedIdentifiers) which need a plist. The
+    # former INFOPLIST_KEY_* scalars (display name, portrait lock, launch screen) migrate here.
+    # XcodeGen generates iosApp/Info.plist from this on `xcodegen generate`.
+    info:
+      path: Info.plist
+      properties:
+        CFBundleDisplayName: Homebase Photos
+        UILaunchScreen: {}
+        # Portrait lock (owner directive) — iPhone never rotates.
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        NSPhotoLibraryUsageDescription: Homebase Photos backs up your photos and videos to your own Homebase drive.
+        UIBackgroundModes:
+          - processing
+        BGTaskSchedulerPermittedIdentifiers:
+          - id.homebase.photos.backup        # BGProcessingTask — opportunistic auto/periodic
+          - id.homebase.photos.backup.now    # BGContinuedProcessingTask — user-initiated, survives backgrounding
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: id.homebase.photos
-        GENERATE_INFOPLIST_FILE: YES
-        INFOPLIST_KEY_UILaunchScreen_Generation: YES
-        INFOPLIST_KEY_CFBundleDisplayName: Homebase Photos
-        # Portrait lock (owner directive) — iPhone never rotates.
-        INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: UIInterfaceOrientationPortrait
+        # NO: an explicit Info.plist (info block) owns the keys; avoids a synthesize/merge conflict.
+        GENERATE_INFOPLIST_FILE: NO
         # Where embedAndSignAppleFrameworkForXcode drops Shared.framework per CONFIGURATION/SDK.
         FRAMEWORK_SEARCH_PATHS: $(SRCROOT)/../shared/build/xcode-frameworks/$(CONFIGURATION)/$(SDK_NAME)
         OTHER_LDFLAGS:

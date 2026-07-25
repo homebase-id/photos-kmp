@@ -1,8 +1,8 @@
 # Homebase Photos — Handoff
 
 **For:** a fresh Claude Code session opened in `~/Documents/GitHub/homebase-photos`.
-**Updated:** 2026-07-07 ~15:45 (keep this file current — owner directive: refresh it at the end of every finishing run).
-**Status:** MVP + Round 1 committed (`ef24aa5` on `photos-mvp`) + **background-backup upload/video/cold-start work implemented & device-verified, UNCOMMITTED** in the working tree (about to commit).
+**Updated:** 2026-07-25 ~17:25 (keep this file current — owner directive: refresh it at the end of every finishing run).
+**Status:** MVP + Round 1 + Android background backup committed (`f57a3da` on `photos-mvp`). **iOS background backup implemented & sim-verified end-to-end, UNCOMMITTED** in the working tree (owner commits after review).
 
 ---
 
@@ -65,6 +65,40 @@ Device-verified 2026-07-04 on iPhone 17 sim + Redmi Note 5 Pro.
   killed-app screenshot went `sending → completed` (hash-matched). iOS bindings exist
   (`backgroundBackup()` factory) but the iOS BGTask trigger + PHAsset crawler are NOT built yet.
 
+**iOS background backup (2026-07-25, working tree, sim-verified — UNCOMMITTED):**
+Brought iOS to Android parity. ~95% was already shared `commonMain` (`BackgroundBackup.run()`,
+`BackupManager`, `PhotoFileBuilder`, outbox drain, `BackupViewModel`) — only the crawler + a Swift
+trigger + config were new.
+- **`PHAssetCrawler`** (`shared/src/nativeMain/.../backup/PHAssetCrawler.kt`) — real `PhotoLibraryCrawler`
+  over the Photos framework (Kotlin/Native `platform.Photos`/`AVFoundation`), replacing the no-op
+  `StubPhotoLibraryCrawler`. Mirrors `MediaStoreCrawler`: `folders()` groups `PHAssetCollection`,
+  `assets()` fetches image+video newest-first, `readBytes()` streams originals via
+  `PHAssetResourceManager`, `readPosterFrame()` via `AVAssetImageGenerator` (JPEG ~0.9). No `vid:`
+  prefix — `deviceAssetId` = `PHAsset.localIdentifier` (globally unique). Bound in `PlatformModule.native.kt`.
+  Pure `utiToMimeType` factored to commonMain + `AssetMimeTypeTest`.
+- **Swift trigger** (`iosApp/iosApp/BackgroundBackupTrigger.swift`) — two paths, both calling the same
+  shared `run()`, registered in `iOSApp.init()` (no AppDelegate):
+  - `BGProcessingTask` (`id.homebase.photos.backup`) — opportunistic auto/periodic (the ONLY way iOS
+    wakes a backgrounded app), 25s ceiling, re-arms each run. Best-effort.
+  - `BGContinuedProcessingTask` (`id.homebase.photos.backup.now`, **iOS 26**) — user-initiated
+    "Back up now". Submitted from the foreground; keeps running with a system progress bar (bridged
+    from shared `BackupState` done/total) if the user leaves the app. `.queue` strategy, 9-min ceiling.
+    Foreground-initiated only — does NOT wake a killed app. **Min deployment target bumped 18.2 → 26.0.**
+- **Backup settings UI** (`iosApp/iosApp/backup/BackupView.swift` + `BackupModel.swift`) over the shared
+  `BackupViewModel` (new `backupViewModel()` factory) — toggle + folder picker + progress; enable path
+  requests `PHPhotoLibrary` readWrite auth first. Entry point: cloud button in `TimelineView` toolbar.
+- **Config** (`iosApp/project.yml`) — static `Info.plist` now owns `NSPhotoLibraryUsageDescription`,
+  `UIBackgroundModes: [processing]`, `BGTaskSchedulerPermittedIdentifiers`. `GENERATE_INFOPLIST_FILE` → NO.
+- **Verified on iPhone 17 sim / iOS 26.5 (2026-07-25):** shared iOS/JVM/Android compile + link green,
+  iOS app (iOS 26 target) + `:androidApp:assembleDebug` green, mime test green. Live E2E: enable →
+  full-access prompt (shows the configured usage string) → `folders()` = "Recents, 9 items" → select →
+  a full pass iterated all 9 real assets (incl. a 3840×2160 spatial video), pre-encrypted each to
+  `outbox-staging`, opened a live upload to the Photos drive (`/api/v2/drives/6483b7b1-…/files`), no
+  errors. `BGContinuedProcessingTask` submission verified via OS log (request built with title/subtitle/
+  `.queue`); **its handler execution is device-only** — the simulator neither auto-launches nor
+  `_simulateLaunch`es a continued task (that private API covers only BGProcessingTask/BGAppRefreshTask),
+  but the handler runs the same already-proven `backgroundBackup().run()`. Confirm on a real iPhone (26+).
+
 ## Blockers / owner actions
 
 1. **Redmi login is HEALTHY again** (2026-07-07) — logged in as `peter.parker.demo.rocks`, survived
@@ -83,14 +117,23 @@ Device-verified 2026-07-04 on iPhone 17 sim + Redmi Note 5 Pro.
 
 Album create/rename/add-photos (needs header-update/tag-write path) → share → favorites/archive/
 trash → search + month scrubber (Batch 3) → **video playback** (backup now works; playback +
-HLS/transcode still the riskiest, last) → **iOS background backup** (PHAsset crawler to replace the
-stub + BGProcessingTask/PHPhotoLibraryChangeObserver trigger that calls the shared
-`backgroundBackup().run()`) → large-video streaming upload (removes the 200 MB skip-guard) → drop
-the dead video-URI trigger or finish it (done) / extend crawler `folders()` count label ("photos"
-now includes videos — cosmetic).
+HLS/transcode still the riskiest, last) → large-video streaming upload (removes the 200 MB skip-guard).
+**iOS background backup is DONE** (2026-07-25) — deferred within it: `PHPhotoLibraryChangeObserver`
+while-alive trigger (skipped v1, iOS has no true background content-wake anyway); confirm the
+`BGProcessingTask` actually fires in the field (sim-forced only so far).
 
 ## Gotchas (new ones first — older ones still apply)
 
+- **iOS has NO true background content-wake** (2026-07-25). Android's JobScheduler content trigger
+  wakes a killed app ~30s after a new photo; iOS has no equivalent. `PHPhotoLibraryChangeObserver`
+  fires only while the app is alive, and `BGProcessingTask` runtime is opportunistic (OS-scheduled, not
+  exact 6h). New-photo latency in the background is inherently best-effort on iOS — don't chase parity.
+- **iOS folder list must reload AFTER the Photos grant** (2026-07-25). `PHAssetCrawler.folders()`
+  returns empty until authorization, so `BackupModel.onToggle` calls `vm.loadFolders()` again right
+  after `.authorized`/`.limited` — otherwise the picker shows "No device folders found" until the sheet
+  is reopened. Keep that second `loadFolders()`.
+- **iOS Photos permission = the switch, not the row label.** The backup `Toggle` only fires from the
+  switch control; tapping the row label doesn't flip it (standard SwiftUI). Not a bug — relevant for AX/QA.
 - **Cold-started background processes have NO login session** (2026-07-07). WorkManager cold-starts a
   process that never runs the UI startup path, so `YouAuthFlowManager.init{}`'s `restoreSession()`
   never fires → `DriveSync … no active credentials`, `OutboxSync: send() skipped — offline`, uploads

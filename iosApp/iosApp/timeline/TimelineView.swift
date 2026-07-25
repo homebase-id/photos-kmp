@@ -15,6 +15,7 @@ struct TimelineView: View {
     @StateObject private var model = TimelineModel()
     @State private var showLogoutDialog = false
     @State private var showDeleteDialog = false
+    @State private var showBackup = false
 
     private var inSelectionMode: Bool { model.uiState?.inSelectionMode == true }
     private var selectedCount: Int { model.uiState?.selectedIds.count ?? 0 }
@@ -44,6 +45,16 @@ struct TimelineView: View {
             .navigationTitle("Photos")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button(action: { showBackup = true }) {
+                        Image(systemName: "arrow.clockwise.icloud")
+                            .font(.system(size: 22))
+                            .foregroundColor(PhotosColor.onSurfaceVariant(scheme))
+                            .frame(width: 32, height: 32)
+                    }
+                    .accessibilityLabel("Backup")
+                    .accessibilityIdentifier("backup-button")
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button(action: { showLogoutDialog = true }) {
                         Image(systemName: "person.crop.circle")
@@ -100,6 +111,7 @@ struct TimelineView: View {
             Text("They'll be removed from your Homebase photo library.")
         }
         .task { model.start() }
+        .sheet(isPresented: $showBackup) { BackupView() }
         .fullScreenCover(
             isPresented: Binding(
                 get: { model.viewerIndex != nil },
