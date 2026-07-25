@@ -6,14 +6,13 @@ import Shared
 /// splash placeholder, the login screen, and the tabbed home. Kept above any NavigationStack so
 /// the gate always wins regardless of in-app navigation (see plan 004's viewer).
 struct RootView: View {
-    @Environment(\.colorScheme) private var scheme
     @StateObject private var model = RootModel()
 
     var body: some View {
         Group {
             switch model.route {
             case .splash:
-                PhotosColor.background(scheme).ignoresSafeArea()
+                SplashView()
             case .login:
                 LoginView()
             case .home:

@@ -27,16 +27,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.graphics.vector.PathData
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import id.homebase.photos.android.ui.components.LeafGlyph
 import id.homebase.photos.android.ui.theme.PhotosTheme
 import id.homebase.photos.auth.LoginPhase
 import id.homebase.photos.auth.LoginUiState
@@ -192,40 +189,4 @@ fun LoginScreen(
                 .padding(horizontal = 24.dp, vertical = 24.dp),
         )
     }
-}
-
-/**
- * Abstract moss leaf-pair wordmark glyph — two mirrored leaves meeting at a base point. Drawn
- * locally: material-icons-core is not a dependency (mirrors TimelineScreen's PlayTriangle). Filled
- * white so the [Icon] tint (`primary`) paints the whole mark.
- */
-private val LeafGlyph: ImageVector by lazy {
-    ImageVector.Builder(
-        name = "LeafGlyph",
-        defaultWidth = 24.dp,
-        defaultHeight = 24.dp,
-        viewportWidth = 24f,
-        viewportHeight = 24f,
-    ).apply {
-        // Left leaf — sweeps up and out from the shared base.
-        addPath(
-            pathData = PathData {
-                moveTo(12f, 21f)
-                curveTo(6f, 18f, 4f, 12f, 7f, 5f)
-                curveTo(13f, 7f, 15f, 13f, 12f, 21f)
-                close()
-            },
-            fill = SolidColor(Color.White),
-        )
-        // Right leaf — mirrored, overlapping the left.
-        addPath(
-            pathData = PathData {
-                moveTo(12f, 21f)
-                curveTo(18f, 18f, 20f, 12f, 17f, 5f)
-                curveTo(11f, 7f, 9f, 13f, 12f, 21f)
-                close()
-            },
-            fill = SolidColor(Color.White),
-        )
-    }.build()
 }

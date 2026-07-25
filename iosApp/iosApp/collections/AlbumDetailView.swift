@@ -9,6 +9,7 @@ import Shared
 /// id without hiding it (which also drops edge-swipe pop), so the id is skipped per plan.
 struct AlbumDetailView: View {
     @Environment(\.colorScheme) private var scheme
+    @EnvironmentObject private var router: Router
     @StateObject private var model: AlbumDetailModel
 
     init(album: AlbumItem) {
@@ -27,18 +28,6 @@ struct AlbumDetailView: View {
         .navigationTitle(model.uiState?.title ?? "")
         .navigationBarTitleDisplayMode(.inline)
         .task { model.start() }
-        .fullScreenCover(
-            isPresented: Binding(
-                get: { model.viewerIndex != nil },
-                set: { presented in if !presented { model.viewerIndex = nil } }
-            )
-        ) {
-            ViewerView(
-                items: model.uiState?.photos ?? [],
-                initialIndex: model.viewerIndex ?? 0,
-                onDismiss: { model.viewerIndex = nil }
-            )
-        }
     }
 
     // MARK: - State branching
@@ -83,7 +72,7 @@ struct AlbumDetailView: View {
                             DayHeader(title: day.title)
                             LazyVGrid(columns: gridColumns, spacing: gap) {
                                 ForEach(day.items, id: \.fileId.description) { item in
-                                    PhotoCell(item: item, onTap: { model.showViewer(for: item) })
+                                    PhotoCell(item: item, onTap: { model.openViewer(for: item, in: router) })
                                 }
                             }
                         }

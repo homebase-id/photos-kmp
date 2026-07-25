@@ -1,8 +1,38 @@
 # Homebase Photos — Handoff
 
 **For:** a fresh Claude Code session opened in `~/Documents/GitHub/homebase-photos`.
-**Updated:** 2026-07-07 ~15:45 (keep this file current — owner directive: refresh it at the end of every finishing run).
-**Status:** MVP + Round 1 committed (`ef24aa5` on `photos-mvp`) + **background-backup upload/video/cold-start work implemented & device-verified, UNCOMMITTED** in the working tree (about to commit).
+**Updated:** 2026-07-25 ~17:25 (keep this file current — owner directive: refresh it at the end of every finishing run).
+**Status:** MVP + Round 1 + background-backup committed (`f57a3da` on `photos-mvp`). **UI/UX redesign underway** — a master plan drives per-batch, per-platform rebuilds. **Batch A (Foundation) implemented & build-verified, UNCOMMITTED**, in worktree `.claude/worktrees/photos-ui-batch-a` (branch `photos-ui-batch-a`).
+
+---
+
+## UI/UX redesign (2026-07-25 →)
+
+Owner-approved decisions: **GP-core scope, no ML** · **Google Photos 2026 nav IA** (Photos·Collections·Create + Search)
+· **fully platform-divergent chrome** (Android = Material 3 Expressive + Material You; iOS = iOS-26 HIG, but the deploy
+target is 18.2 so no unconditional Liquid-Glass APIs). Master plan sequences 7 batches: **A** Foundation → **B** Viewer
+(actions/zoom/video) → **C** Collections & album management → **D** Favorites/Archive/Trash (schema-gated) → **E** Search
+(metadata) → **F** Memories → **G** Settings & backup. Each batch = shared-headless agent (if needed) → Android + iOS
+agents in parallel → one verifier build pass. Shared `StateFlow<UiState>` stays the source of truth; new on-drive formats
+need owner schema sign-off.
+
+**Batch A — Foundation (done, uncommitted):**
+- **Android:** real `NavHost` router (`ui/nav/Routes.kt`, `ui/home/AppShell.kt`) replacing hoisted-state nav; deleted
+  `HomeScreen.kt`/`HomeBottomBar.kt`. GP-2026 **floating pill** (`ui/components/FloatingNavBar.kt`) = Photos·Collections·
+  Create + round Search. Branded splash + Android-12 `installSplashScreen()`; adaptive launcher icon (white leaf on moss).
+  Placeholder `ui/create/CreateScreen.kt` + `ui/search/SearchScreen.kt`. Deps added: `navigation-compose 2.9.6`,
+  `core-splashscreen 1.0.1`. New `AppShellNavTest`.
+- **iOS:** shared `navigation/Router.swift` (`NavigationPath` + `Route`); shell-hosted viewer `fullScreenCover`; 4-tab
+  native `TabView` (Photos·Collections·Create·Search) in `home/HomeTabView.swift`; `SplashView`; `create/CreateView` +
+  `search/SearchView` placeholders; new `Assets.xcassets` + generated leaf `AppIcon` (**final icon art still a pending
+  design deliverable**). `project.yml` gained `ASSETCATALOG_COMPILER_APPICON_NAME`. New `ShellNavUITest`.
+- **Verified:** `:shared` compiles (untouched); `:androidApp:assembleDebug` green; Android unit + androidTest compile
+  (no emulator run); iOS `xcodegen` + `xcodebuild build`/`build-for-testing` green on iPhone 17 / iOS 26.5. iOS shell
+  smoke-tested live via the `-uiTestTimeline` bypass (4 tabs render, Search placeholder navigates). Fixes made by
+  verifier: added `ExperimentalMaterial3Api` import in SearchScreen.kt; copied gitignored `local.properties` into worktree.
+- **a11y ids:** all existing preserved; added `tab-create`, `tab-search`/`search-button`, `splash-root`, plus
+  create/search screen ids. **Known-follow-ups:** floating pill can overlap the timeline backup card (nudge later);
+  Android on-device QA still login-gated (owner login needed); final iOS app-icon art pending.
 
 ---
 

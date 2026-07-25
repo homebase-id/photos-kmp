@@ -13,8 +13,6 @@ final class AlbumDetailModel: ObservableObject {
     @Published private(set) var uiState: AlbumDetailUiState?
     /// Month sections, each carrying its day groups. Recomputed on each state emission.
     @Published private(set) var monthSections: [TimelineMonth] = []
-    /// Index into `photos` of the item the fullscreen viewer is showing; nil = closed.
-    @Published var viewerIndex: Int?
 
     private var observeTask: Task<Void, Never>?
 
@@ -35,11 +33,12 @@ final class AlbumDetailModel: ObservableObject {
         }
     }
 
-    /// Open the fullscreen viewer at `item`'s position in the album's flat pager list.
-    func showViewer(for item: PhotoItem) {
+    /// Open the fullscreen viewer at `item`'s position in the album's flat pager list, routed
+    /// through the shared `Router` so the shell presents the single viewer cover.
+    func openViewer(for item: PhotoItem, in router: Router) {
         let items = uiState?.photos ?? []
         if let idx = items.firstIndex(where: { $0.fileId.description == item.fileId.description }) {
-            viewerIndex = idx
+            router.openViewer(items: items, initialIndex: idx)
         }
     }
 

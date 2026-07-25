@@ -2,4 +2,6 @@
 <resources>
     <!-- Pure white so the pre-Compose window matches the neutral Google-Photos theme. -->
     <color name="conservatory_window_background">#FFFFFFFF</color>
+    <!-- Adaptive-icon background: moss (the brand leaf motif's earthy palette). White leaf on it. -->
+    <color name="ic_launcher_background">#FF4F8A5B</color>
 </resources>

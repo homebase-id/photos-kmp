@@ -7,17 +7,11 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.browser.customtabs.CustomTabsIntent
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.Modifier
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import id.homebase.api.youauth.YouAuthFlowManager
@@ -26,21 +20,17 @@ import id.homebase.photos.auth.LoginEvent
 import id.homebase.photos.auth.LoginViewModel
 import id.homebase.photos.backup.BackupManager
 import id.homebase.photos.backup.BackupViewModel
-import id.homebase.photos.domain.PhotoItem
 import id.homebase.photos.timeline.TimelineEvent
 import id.homebase.photos.timeline.TimelineViewModel
 import id.homebase.photos.android.ui.backup.BackupStatusCard
 import id.homebase.photos.android.work.BackupScheduler
 import id.homebase.photos.android.ui.buildHomebaseImageLoader
-import id.homebase.photos.android.ui.home.HomeScreen
+import id.homebase.photos.android.ui.home.AppShell
 import id.homebase.photos.android.ui.login.LoginScreen
+import id.homebase.photos.android.ui.splash.SplashScreen
 import id.homebase.photos.android.ui.theme.PhotosTheme
-import id.homebase.photos.android.ui.viewer.ViewerScreen
 import kotlinx.coroutines.launch
 import org.koin.core.context.GlobalContext
-
-/** Album-detail viewer request: a snapshot of the album's flat photo list + the tapped index. */
-private data class AlbumViewerRequest(val photos: List<PhotoItem>, val index: Int)
 
 class MainActivity : ComponentActivity() {
 
@@ -49,6 +39,7 @@ class MainActivity : ComponentActivity() {
     private val youAuth: YouAuthFlowManager by lazy { GlobalContext.get().get<YouAuthFlowManager>() }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        installSplashScreen() // Android 12+ cold-start splash → Theme.HomebasePhotos.Starting (A3).
         super.onCreate(savedInstanceState)
         enableEdgeToEdge() // timeline grid renders edge-to-edge (design-system §4.1)
         // Cold-start deep link: the browser may have relaunched us straight into the redirect.
@@ -60,12 +51,8 @@ class MainActivity : ComponentActivity() {
                 val authState by youAuth.authState.collectAsStateWithLifecycle()
                 when (authState) {
                     is YouAuthState.Initializing ->
-                        // Splash: plain warm ground while the session bootstraps.
-                        Box(
-                            Modifier
-                                .fillMaxSize()
-                                .background(MaterialTheme.colorScheme.background)
-                        )
+                        // Branded splash while the session bootstraps (A3).
+                        SplashScreen()
                     is YouAuthState.Authenticated -> {
                         // Shared headless ViewModel (StateFlow<TimelineUiState>) resolved from Koin.
                         val vm = remember { koin.get<TimelineViewModel>() }
@@ -76,12 +63,7 @@ class MainActivity : ComponentActivity() {
                         // Same Koin singleton the BackupWorker/card resolve — used to reconcile on launch.
                         val backupManager = remember { koin.get<BackupManager>() }
 
-                        val state by vm.state.collectAsStateWithLifecycle()
                         val snackbarHostState = remember { SnackbarHostState() }
-                        // Timeline viewer overlay index into pagedItems; null = closed (plan 004 §A2).
-                        var viewerIndex by remember { mutableStateOf<Int?>(null) }
-                        // Album viewer overlay — pages the album's own flat list (round-1 plan A4).
-                        var albumViewer by remember { mutableStateOf<AlbumViewerRequest?>(null) }
 
                         // One-time events → transient snackbars (design: events on a separate SharedFlow).
                         LaunchedEffect(vm) {
@@ -108,18 +90,12 @@ class MainActivity : ComponentActivity() {
                             }
                         }
 
-                        HomeScreen(
+                        // Real NavHost back-stack owns the viewer/album/create/search destinations now
+                        // (A1) — the Activity only keeps the VM lifecycle effects above.
+                        AppShell(
                             timelineViewModel = vm,
                             imageLoader = imageLoader,
                             snackbarHostState = snackbarHostState,
-                            onPhotoClick = { photo ->
-                                viewerIndex = state.pagedItems
-                                    .indexOfFirst { it.fileId == photo.fileId }
-                                    .takeIf { it >= 0 }
-                            },
-                            onOpenAlbumPhoto = { photos, index ->
-                                albumViewer = AlbumViewerRequest(photos, index)
-                            },
                             // Logout runs in lifecycleScope (survives the recomposition the authState
                             // flip triggers); the root gate above then swaps back to the login screen.
                             onLogout = { lifecycleScope.launch { youAuth.logout() } },
@@ -130,25 +106,6 @@ class MainActivity : ComponentActivity() {
                                 )
                             },
                         )
-
-                        // Full-screen viewer overlays the grid when a photo is tapped (plan 004 §A2).
-                        viewerIndex?.let { idx ->
-                            ViewerScreen(
-                                items = state.pagedItems,
-                                initialIndex = idx,
-                                imageLoader = imageLoader,
-                                onDismiss = { viewerIndex = null },
-                            )
-                        }
-                        // Album viewer pages the tapped album's snapshot (round-1 plan A4).
-                        albumViewer?.let { request ->
-                            ViewerScreen(
-                                items = request.photos,
-                                initialIndex = request.index,
-                                imageLoader = imageLoader,
-                                onDismiss = { albumViewer = null },
-                            )
-                        }
                     }
                     else -> {
                         // Unauthenticated / Authenticating / Error all share this branch, so the

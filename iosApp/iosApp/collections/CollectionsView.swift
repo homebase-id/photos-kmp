@@ -6,10 +6,11 @@ import Shared
 /// `AlbumsViewModel`); this view only renders.
 struct CollectionsView: View {
     @Environment(\.colorScheme) private var scheme
+    @EnvironmentObject private var router: Router
     @StateObject private var model = CollectionsModel()
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $router.path) {
             // The backdrop doubles as the `collections-root` a11y marker — same collapse lesson
             // as TimelineView: a container modifier on the single-child surface shadows its id.
             content
@@ -22,8 +23,11 @@ struct CollectionsView: View {
                 )
                 .navigationTitle("Collections")
                 .navigationBarTitleDisplayMode(.inline)
-                .navigationDestination(for: AlbumItem.self) { album in
-                    AlbumDetailView(album: album)
+                .navigationDestination(for: Route.self) { route in
+                    switch route {
+                    case .albumDetail(let album):
+                        AlbumDetailView(album: album)
+                    }
                 }
         }
         .tint(PhotosColor.primary(scheme))
@@ -62,7 +66,7 @@ struct CollectionsView: View {
         ScrollView {
             LazyVGrid(columns: twoColumns, spacing: PhotosMetrics.space16) {
                 ForEach(albums, id: \.album.fileId.description) { summary in
-                    NavigationLink(value: summary.album) {
+                    NavigationLink(value: Route.albumDetail(summary.album)) {
                         AlbumCard(summary: summary)
                     }
                     .buttonStyle(.plain)

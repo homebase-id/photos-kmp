@@ -41,6 +41,8 @@ dependencies {
     implementation(libs.coil3.compose)
     implementation(libs.androidx.work.runtime)
     implementation(libs.androidx.browser)
+    implementation(libs.androidx.navigation.compose)
+    implementation(libs.androidx.core.splashscreen)
 
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)

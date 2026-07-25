@@ -23,8 +23,6 @@ final class TimelineModel: ObservableObject {
     @Published private(set) var toastMessage: String?
     /// Persistent first-load error captured from events (belt-and-suspenders with `uiState.error`).
     @Published private(set) var loadError: String?
-    /// Index into `pagedItems` of the photo the fullscreen viewer is showing; nil = closed.
-    @Published var viewerIndex: Int?
 
     private var observeTask: Task<Void, Never>?
     private var eventsTask: Task<Void, Never>?
@@ -58,11 +56,12 @@ final class TimelineModel: ObservableObject {
         }
     }
 
-    /// Open the fullscreen viewer at `item`'s position in the flat pager list (`pagedItems`).
-    func showViewer(for item: PhotoItem) {
+    /// Open the fullscreen viewer at `item`'s position in the flat pager list (`pagedItems`),
+    /// routed through the shared `Router` so the shell presents the single viewer cover.
+    func openViewer(for item: PhotoItem, in router: Router) {
         let items = uiState?.pagedItems ?? []
         if let idx = items.firstIndex(where: { $0.fileId.description == item.fileId.description }) {
-            viewerIndex = idx
+            router.openViewer(items: items, initialIndex: idx)
         }
     }
 

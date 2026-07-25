@@ -12,6 +12,7 @@ import Shared
 /// across struct re-inits). Views render; the VM owns logic.
 struct TimelineView: View {
     @Environment(\.colorScheme) private var scheme
+    @EnvironmentObject private var router: Router
     @StateObject private var model = TimelineModel()
     @State private var showLogoutDialog = false
     @State private var showDeleteDialog = false
@@ -100,18 +101,6 @@ struct TimelineView: View {
             Text("They'll be removed from your Homebase photo library.")
         }
         .task { model.start() }
-        .fullScreenCover(
-            isPresented: Binding(
-                get: { model.viewerIndex != nil },
-                set: { presented in if !presented { model.viewerIndex = nil } }
-            )
-        ) {
-            ViewerView(
-                items: model.uiState?.pagedItems ?? [],
-                initialIndex: model.viewerIndex ?? 0,
-                onDismiss: { model.viewerIndex = nil }
-            )
-        }
     }
 
     private var deleteTitle: String {
@@ -180,7 +169,7 @@ struct TimelineView: View {
                 if inSelectionMode {
                     model.vm.toggleSelection(photo: item)
                 } else {
-                    model.showViewer(for: item)
+                    model.openViewer(for: item, in: router)
                 }
             },
             onLongPress: {

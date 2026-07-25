@@ -4,4 +4,12 @@
     <style name="Theme.HomebasePhotos" parent="@android:style/Theme.Material.Light.NoActionBar">
         <item name="android:windowBackground">@color/conservatory_window_background</item>
     </style>
+
+    <!-- Android 12+ cold-start splash (A3): leaf on the same neutral ground the in-app SplashScreen
+         uses. installSplashScreen() swaps to Theme.HomebasePhotos once the first frame is ready. -->
+    <style name="Theme.HomebasePhotos.Starting" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/conservatory_window_background</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_splash_leaf</item>
+        <item name="postSplashScreenTheme">@style/Theme.HomebasePhotos</item>
+    </style>
 </resources>
