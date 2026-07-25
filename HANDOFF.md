@@ -8,6 +8,9 @@
 
 ## UI/UX redesign (2026-07-25 →)
 
+**Per-batch plans (one session each):** `docs/superpowers/plans/2026-07-25-ui-redesign-index.md` + a detailed file per
+batch B–G. Open the index, then the batch file, and run its pipeline.
+
 Owner-approved decisions: **GP-core scope, no ML** · **Google Photos 2026 nav IA** (Photos·Collections·Create + Search)
 · **fully platform-divergent chrome** (Android = Material 3 Expressive + Material You; iOS = iOS-26 HIG, but the deploy
 target is 18.2 so no unconditional Liquid-Glass APIs). Master plan sequences 7 batches: **A** Foundation → **B** Viewer
