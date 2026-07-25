@@ -87,7 +87,8 @@ final class AlbumsModel: ObservableObject {
     }
 
     func delete(_ album: AlbumItem) async -> Bool {
-        (try? await vm.deleteAndWait(album: album)) ?? false
+        // A suspend fun returning a primitive bridges as boxed KotlinBoolean.
+        (try? await vm.deleteAndWait(album: album))?.boolValue ?? false
     }
 
     func setCover(_ album: AlbumItem, photo: PhotoItem) async -> AlbumItem? {

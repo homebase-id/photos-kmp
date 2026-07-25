@@ -177,7 +177,7 @@ class AlbumDetailViewModelTest {
         assertFalse(state.isRemoving)
         // Untag only — the photo file itself is never deleted.
         assertEquals(listOf(roadtrip.albumId to listOf(a.fileId)), repo.removeCalls)
-        assertEquals(listOf(AlbumDetailEvent.Removed(1)), events)
+        assertEquals(listOf<AlbumDetailEvent>(AlbumDetailEvent.Removed(1)), events)
         collector.cancel()
     }
 

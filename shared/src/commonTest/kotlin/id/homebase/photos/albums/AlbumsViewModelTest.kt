@@ -158,7 +158,7 @@ class AlbumsViewModelTest {
         assertEquals("Roadtrip", created.name)
         assertTrue(vm.state.value.albums.any { it.album.name == "Roadtrip" })
         assertFalse(vm.state.value.isMutating)
-        assertEquals(listOf(AlbumsEvent.Created(created)), events)
+        assertEquals(listOf<AlbumsEvent>(AlbumsEvent.Created(created)), events)
         assertEquals(1, repo.syncCount, "the new album file only reaches the index via sync")
         collector.cancel()
     }
@@ -224,7 +224,7 @@ class AlbumsViewModelTest {
         advanceUntilIdle()
 
         assertEquals(listOf("Hikes"), vm.state.value.albums.map { it.album.name })
-        assertEquals(listOf(AlbumsEvent.Deleted(trip)), events)
+        assertEquals(listOf<AlbumsEvent>(AlbumsEvent.Deleted(trip)), events)
         collector.cancel()
     }
 
@@ -282,7 +282,7 @@ class AlbumsViewModelTest {
         assertEquals(listOf(broken), result?.failed)
         assertFalse(result!!.isCompleteSuccess)
         assertEquals(listOf(trip.albumId to listOf(ok, broken)), repo.addCalls)
-        assertEquals(listOf(AlbumsEvent.PhotosAdded(trip.albumId, added = 1, failed = 1)), events)
+        assertEquals(listOf<AlbumsEvent>(AlbumsEvent.PhotosAdded(trip.albumId, added = 1, failed = 1)), events)
         collector.cancel()
     }
 
@@ -335,7 +335,8 @@ class AlbumsViewModelTest {
 
         // The refusal must be visible — a bare `false` here reads as a server refusal to the UI.
         assertFalse(vm.deleteAndWait(trip))
-        assertEquals(listOf(AlbumsEvent.Busy), events)
+        advanceUntilIdle() // the busy refusal never suspends — let the events collector run
+        assertEquals(listOf<AlbumsEvent>(AlbumsEvent.Busy), events)
         assertEquals(listOf("Trip"), vm.state.value.albums.map { it.album.name })
 
         gate.complete(Unit)
