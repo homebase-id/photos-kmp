@@ -176,6 +176,9 @@ fun albumsViewModel(): AlbumsViewModel = KoinPlatform.getKoin().get()
 /** iOS-callable: the shared background-backup entrypoint. A BGTask handler calls run() (SKIE async). */
 fun backgroundBackup(): BackgroundBackup = KoinPlatform.getKoin().get()
 
+/** iOS-callable factory: the backup settings ViewModel from Koin. */
+fun backupViewModel(): BackupViewModel = KoinPlatform.getKoin().get()
+
 /** iOS-callable factory: album detail VM for [album] over the shared repository. */
 fun albumDetailViewModel(album: AlbumItem): AlbumDetailViewModel =
     AlbumDetailViewModel(album, KoinPlatform.getKoin().get())

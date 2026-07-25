@@ -47,6 +47,11 @@ Multiplatform UI** guidance does **NOT** apply here:
   `:shared:compileKotlinIosSimulatorArm64`. iOS app: open `iosApp/` in Xcode.
 - Don't use `/` in git branch names.
 - Minimal code comments — terse one-liner only for non-obvious *why*, never "what the code does".
+- **DRY / reusable components (owner directive):** before writing any new UI piece, check
+  `androidApp .../ui/components/` (Compose) and `iosApp/iosApp/components/` (SwiftUI) and reuse or
+  extend what's there. Anything plausibly needed by a second screen (buttons, cells, dialogs, chrome
+  bars, sheets, empty states, glyphs) is built as a reusable component in those packages — not
+  inlined in a screen file. Never copy-paste a composable/View between screens.
 
 ## Gotchas
 
