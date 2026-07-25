@@ -11,6 +11,10 @@ import platform.Foundation.create
 suspend fun loadThumbnailData(item: PhotoItem, maxDim: Int): NSData? =
     loadThumbnailBytes(item, maxDim)?.toNSData()
 
+/** iOS-callable: full-res payload as NSData in ONE copy (memcpy) — stills share/save. */
+suspend fun loadOriginalData(item: PhotoItem): NSData? =
+    loadOriginalBytes(item)?.toNSData()
+
 @OptIn(ExperimentalForeignApi::class)
 private fun ByteArray.toNSData(): NSData =
     if (isEmpty()) NSData()

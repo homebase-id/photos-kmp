@@ -56,7 +56,7 @@ import kotlin.uuid.ExperimentalUuidApi
 fun AlbumDetailScreen(
     album: AlbumItem,
     onBack: () -> Unit,
-    onOpenViewer: (photos: List<PhotoItem>, index: Int) -> Unit,
+    onOpenViewer: (photos: List<PhotoItem>, index: Int, refreshOnDelete: () -> Unit) -> Unit,
     imageLoader: ImageLoader? = null,
     modifier: Modifier = Modifier,
 ) {
@@ -69,7 +69,7 @@ fun AlbumDetailScreen(
         onPhotoClick = { photo ->
             state.photos.indexOfFirst { it.fileId == photo.fileId }
                 .takeIf { it >= 0 }
-                ?.let { index -> onOpenViewer(state.photos, index) }
+                ?.let { index -> onOpenViewer(state.photos, index, viewModel::refresh) }
         },
         onRetry = viewModel::refresh,
         imageLoader = imageLoader,

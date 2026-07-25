@@ -31,6 +31,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.concurrent.Volatile
 import kotlin.io.encoding.Base64
 
@@ -105,6 +106,7 @@ class YouAuthFlowManager(
 
     companion object {
         private val TAG = "YouAuthFlowManager"
+        private const val LOGOUT_NOTIFY_TIMEOUT_MS = 5_000L
     }
 
     init {
@@ -362,13 +364,17 @@ class YouAuthFlowManager(
 
     /** Logout and clear credentials. */
     suspend fun logout() {
-        // Notify the backend first — this needs valid credentials.
+        // Notify the backend first — best-effort, hard-capped. Ktor's default socket
+        // timeout is minutes; an unreachable identity host must never block the local
+        // teardown below (owner hit "Log out does nothing" during a server outage).
         try {
-            val credentials = CredentialStorage.getCredentials()
-            if (credentials != null) {
-                val provider = YouAuthProvider(httpClient, credentials.identity)
-                provider.logout()
-            }
+            withTimeoutOrNull(LOGOUT_NOTIFY_TIMEOUT_MS) {
+                val credentials = CredentialStorage.getCredentials()
+                if (credentials != null) {
+                    val provider = YouAuthProvider(httpClient, credentials.identity)
+                    provider.logout()
+                }
+            } ?: Logger.w(tag = TAG) { "Logout notify timed out; continuing local logout" }
         } catch (e: Exception) {
             Logger.e(throwable = e, tag = TAG) { "Error during logout" }
         }

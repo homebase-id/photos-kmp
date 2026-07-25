@@ -45,6 +45,7 @@ import coil3.ImageLoader
 import id.homebase.photos.android.ui.components.CARD_CLEARANCE
 import id.homebase.photos.android.ui.components.DAY_FORMATTER
 import id.homebase.photos.android.ui.components.DaySubhead
+import id.homebase.photos.android.ui.components.DeleteConfirmDialog
 import id.homebase.photos.android.ui.components.EmptyState
 import id.homebase.photos.android.ui.components.ErrorState
 import id.homebase.photos.android.ui.components.FooterLoading
@@ -217,26 +218,6 @@ private fun LogoutDialog(onConfirm: () -> Unit, onDismiss: () -> Unit) {
             }
         },
         containerColor = MaterialTheme.colorScheme.surface,
-    )
-}
-
-/** Delete confirmation per contract C5 — destructive confirm tagged `delete-confirm`. */
-@Composable
-private fun DeleteConfirmDialog(count: Int, onConfirm: () -> Unit, onDismiss: () -> Unit) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(if (count == 1) "Delete 1 item?" else "Delete $count items?") },
-        text = { Text("They'll be removed from your Homebase photo library.") },
-        confirmButton = {
-            TextButton(onClick = onConfirm, modifier = Modifier.testTag("delete-confirm")) {
-                Text("Delete", color = MaterialTheme.colorScheme.error)
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel")
-            }
-        },
     )
 }
 

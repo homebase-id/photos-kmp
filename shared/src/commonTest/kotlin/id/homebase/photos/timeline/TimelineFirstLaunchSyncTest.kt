@@ -2,6 +2,7 @@ package id.homebase.photos.timeline
 
 import id.homebase.photos.data.PhotosRepository
 import id.homebase.photos.domain.PhotoItem
+import id.homebase.photos.viewer.VideoHandle
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -41,6 +42,9 @@ class TimelineFirstLaunchSyncTest {
         override suspend fun deletePhotos(fileIds: List<Uuid>): Boolean = true
 
         override suspend fun loadThumbnailBytes(item: PhotoItem, maxDim: Int): ByteArray? = null
+        override suspend fun loadOriginalBytes(item: PhotoItem): ByteArray? = null
+        override suspend fun prepareVideo(item: PhotoItem): VideoHandle? = null
+        override suspend fun disposeVideo(handle: VideoHandle) {}
     }
 
     private fun item(userDate: Long): PhotoItem = PhotoItem(

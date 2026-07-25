@@ -1,6 +1,7 @@
 package id.homebase.photos.data
 
 import id.homebase.photos.domain.PhotoItem
+import id.homebase.photos.viewer.VideoHandle
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -101,4 +102,13 @@ class MockPhotosRepository(
     @OptIn(ExperimentalEncodingApi::class)
     override suspend fun loadThumbnailBytes(item: PhotoItem, maxDim: Int): ByteArray? =
         item.previewPlaceholder?.let { Base64.decode(it) }
+
+    // Deterministic small bytes so share/save paths have something real to hand over.
+    @OptIn(ExperimentalEncodingApi::class)
+    override suspend fun loadOriginalBytes(item: PhotoItem): ByteArray? =
+        item.previewPlaceholder?.let { Base64.decode(it) } ?: item.fileId.toString().encodeToByteArray()
+
+    override suspend fun prepareVideo(item: PhotoItem): VideoHandle? = null
+
+    override suspend fun disposeVideo(handle: VideoHandle) {}
 }

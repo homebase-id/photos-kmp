@@ -48,6 +48,8 @@ import kotlin.uuid.ExperimentalUuidApi
 /** Carries the viewer's photo list across a nav hop — too large/complex for a Bundle arg. */
 private class ViewerBridge {
     var items: List<PhotoItem> = emptyList()
+    // Host grid's close hook — refreshes its VM when the viewer deleted anything (contract B).
+    var onClosed: (deletedAny: Boolean) -> Unit = {}
 }
 
 /**
@@ -106,6 +108,9 @@ fun AppShell(
                         val idx = timelineState.pagedItems.indexOfFirst { it.fileId == photo.fileId }
                         if (idx >= 0) {
                             viewerBridge.items = timelineState.pagedItems
+                            viewerBridge.onClosed = { deletedAny ->
+                                if (deletedAny) timelineViewModel.refresh()
+                            }
                             navController.navigate(Route.Viewer.path(idx))
                         }
                     },
@@ -145,8 +150,11 @@ fun AppShell(
                     AlbumDetailScreen(
                         album = album,
                         onBack = { navController.popBackStack() },
-                        onOpenViewer = { photos, index ->
+                        onOpenViewer = { photos, index, refreshOnDelete ->
                             viewerBridge.items = photos
+                            viewerBridge.onClosed = { deletedAny ->
+                                if (deletedAny) refreshOnDelete()
+                            }
                             navController.navigate(Route.Viewer.path(index))
                         },
                         imageLoader = imageLoader,
@@ -167,7 +175,10 @@ fun AppShell(
                         items = items,
                         initialIndex = index,
                         imageLoader = imageLoader,
-                        onDismiss = { navController.popBackStack() },
+                        onDismiss = { deletedAny ->
+                            viewerBridge.onClosed(deletedAny)
+                            navController.popBackStack()
+                        },
                     )
                 }
             }

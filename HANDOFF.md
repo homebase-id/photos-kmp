@@ -2,7 +2,7 @@
 
 **For:** a fresh Claude Code session opened in `~/Documents/GitHub/homebase-photos`.
 **Updated:** 2026-07-25 ~17:25 (keep this file current — owner directive: refresh it at the end of every finishing run).
-**Status:** MVP + Round 1 + background-backup (Android `f57a3da` + iOS `32ebd7e`) committed on `photos-mvp`. **UI/UX redesign underway** — a master plan drives per-batch, per-platform rebuilds. **Batch A (Foundation) committed** (`fa16d47`..`fea44ce` on `photos-ui-batch-a`); **Batch B (Viewer) in progress** on `photos-ui-batch-b` (= batch A + `photos-mvp` merged), worktree `.claude/worktrees/photos-ui-batch-a`.
+**Status:** MVP + Round 1 + background-backup (Android `f57a3da` + iOS `32ebd7e`) committed on `photos-mvp`. **UI/UX redesign underway** — a master plan drives per-batch, per-platform rebuilds. **Batch A (Foundation) committed** (`fa16d47`..`fea44ce` on `photos-ui-batch-a`); **Batch B (Viewer) IMPLEMENTED + build/test-verified, uncommitted** on `photos-ui-batch-b` (= batch A + `photos-mvp` merged), worktree `.claude/worktrees/photos-ui-batch-a`. On-device QA partially blocked by the identity-host outage (see Blockers #0).
 
 ---
 
@@ -12,14 +12,48 @@
 batch B–G. Open the index, then the batch file, and run its pipeline.
 
 Owner-approved decisions: **GP-core scope, no ML** · **Google Photos 2026 nav IA** (Photos·Collections·Create + Search)
-· **fully platform-divergent chrome** (Android = Material 3 Expressive + Material You; iOS = iOS-26 HIG, but the deploy
-target is 18.2 so no unconditional Liquid-Glass APIs). Master plan sequences 7 batches: **A** Foundation → **B** Viewer
+· **fully platform-divergent chrome** (Android = Material 3 Expressive + Material You; iOS = iOS-26 HIG — deploy
+target is now **26.0** (bumped on `photos-mvp` `32ebd7e`, merged here), so Liquid-Glass APIs are fair game). Master plan sequences 7 batches: **A** Foundation → **B** Viewer
 (actions/zoom/video) → **C** Collections & album management → **D** Favorites/Archive/Trash (schema-gated) → **E** Search
 (metadata) → **F** Memories → **G** Settings & backup. Each batch = shared-headless agent (if needed) → Android + iOS
 agents in parallel → one verifier build pass. Shared `StateFlow<UiState>` stays the source of truth; new on-drive formats
 need owner schema sign-off.
 
-**Batch A — Foundation (done, uncommitted):**
+**Batch B — Viewer (done, uncommitted on `photos-ui-batch-b`; 2026-07-25 evening):**
+- **Contract:** `docs/superpowers/plans/2026-07-25-ui-batch-b-contracts.md` (frozen before the parallel writers ran).
+- **Shared:** `viewer/ViewerViewModel` (`ViewerUiState` items/index/isDeleting/`deletedAny`, events `Error`/`Closed`,
+  `setIndex` clamped, `deleteCurrent[AndWait]` mirroring Timeline's delete) + `viewer/VideoHandle`. `PhotosRepository`
+  gained `loadOriginalBytes` (via `HomebaseImageLoader.loadFullPayload`, 48 MiB memo cache), `prepareVideo`
+  (decrypt-to-temp via `streamPayloadDecryptedToPath`; segmented/HLS → null, deferred), `disposeVideo`.
+  `PhotosRepositoryImpl` ctor gained `fileOps` (Koin updated). Factories: `viewerViewModel(items, initialIndex)` +
+  top-level `loadOriginalBytes`/`prepareVideo`/`disposeVideo`; iOS `loadOriginalData` NSData bridge. 15 new shared
+  tests green (`ViewerViewModelTest` ×10, `PrepareVideoTest` ×5).
+- **Android:** VM-driven `ViewerScreen` + bottom action bar **Share · Delete · Info** (favorite/add-to-album deliberately
+  absent until D/C); `ViewerInfoSheet` (ModalBottomSheet); zoom via **telephoto** `ZoomableAsyncImage`
+  (`me.saket.telephoto:zoomable-image-coil3 0.16.0` — owner directive: use the established package; it also owns
+  pan-vs-page arbitration, hand-rolled `components/Zoomable.kt` deleted); `VideoPlayerPage` (media3 ExoPlayer over
+  `prepareVideo` temp file); share via `cacheDir/share/` + FileProvider; `DeleteConfirmDialog` extracted to
+  `ui/components/` and reused; `ViewerBridge.onClosed(deletedAny)` → host grid refresh. New ids: `viewer-actionbar`,
+  `viewer-share`, `viewer-delete`, `viewer-info`, `viewer-info-sheet`, `viewer-video-surface`. Rewritten `ViewerScreenTest`.
+- **iOS:** `viewer/ViewerModel.swift` over the shared VM (SKIE pattern); action bar (`.glassEffect` capsule) with the
+  same three actions; `ViewerInfoSheet`; zoom via reusable `components/Zoomable.swift` (Magnify + pan + double-tap;
+  gates paging & swipe-dismiss while zoomed); `ViewerVideoPage` (AVKit `VideoPlayer` over `prepareVideo`); share via
+  `components/ShareSheet.swift` (originals, thumb fallback); `hbPhotosChanged` notification → Timeline/AlbumDetail
+  refresh; `components/ToastCapsule.swift` extracted. Ids: `viewer-actionbar/-share/-delete/-info/-info-sheet/-video`.
+  Chrome intentionally does NOT auto-hide on video pages (AVKit controls own taps). `ViewerUITest` updated (delete
+  test cancels the alert — real library).
+- **Logout fix (shared, found during QA):** `YouAuthFlowManager.logout()` now hard-caps the backend-notify POST at 5s
+  (`withTimeoutOrNull`) — previously an unreachable identity host blocked local logout for minutes (Ktor socket
+  timeout). Local teardown always proceeds.
+- **Verified:** `:shared` JVM + iosSimulatorArm64 compile, `:shared:jvmTest` all green, `:androidApp:assembleDebug` +
+  androidTest compile, `xcodegen` + `xcodebuild` green (iPhone 17 / iOS 26.5) — zero verifier fixes needed. **Redmi live
+  QA (offline):** action bar ✓, info sheet ✓ (date/dims/type/modified), telephoto pinch/pan/double-tap ✓, back-dismiss ✓.
+- **BLOCKED on the identity-host outage (`*.demo.rocks` down during QA):** hi-res thumbnails, video playback, share
+  originals, delete round-trip, and ALL iOS on-device QA (sim session got logged out; login needs the server — see
+  Blockers). Argent QA gaps to close when the server returns: video plays, share sheet, delete on a sim-stock upload,
+  iOS full viewer pass, Android video-page bottom-band overlap eyeball.
+
+**Batch A — Foundation (done, COMMITTED `fa16d47`..`fea44ce`):**
 - **Android:** real `NavHost` router (`ui/nav/Routes.kt`, `ui/home/AppShell.kt`) replacing hoisted-state nav; deleted
   `HomeScreen.kt`/`HomeBottomBar.kt`. GP-2026 **floating pill** (`ui/components/FloatingNavBar.kt`) = Photos·Collections·
   Create + round Search. Branded splash + Android-12 `installSplashScreen()`; adaptive launcher icon (white leaf on moss).
@@ -140,6 +174,13 @@ trigger + config were new.
 
 ## Blockers / owner actions
 
+0. **Identity host outage (2026-07-25 evening):** `peter.parker.demo.rocks` (and `frodo.baggins.demo.rocks`)
+   unreachable — connect/socket timeouts from both the Mac and devices. Consequences: hi-res thumbnails/video/
+   share/delete unverifiable; **the iPhone 17 sim is now LOGGED OUT** (owner logged out during the outage; login
+   can't complete against a dead host — the Safari YouAuth page can't load). When the server is back: log the sim
+   in (`peter.parker.demo.rocks`), then run the deferred Argent QA listed under Batch B. The Redmi is still
+   logged in (do NOT log it out). Logout itself was hardened this session (5s notify cap in
+   `YouAuthFlowManager.logout()`), so offline logout is instant now.
 1. **Redmi login is HEALTHY again** (2026-07-07) — logged in as `peter.parker.demo.rocks`, survived
    several `installDebug` reinstalls this session and cold-restores fine. The earlier Keystore-wipe
    blocker is resolved. (Still true: `connectedDebugAndroidTest` reinstall can wipe the session — see

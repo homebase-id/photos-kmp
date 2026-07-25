@@ -4,15 +4,21 @@ import co.touchlab.kermit.Logger
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.files.DriveFileProvider
+import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.sync.DriveSyncManager
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.serialization.OdinSystemSerializer
+import id.homebase.api.video.VideoPlayerData
+import id.homebase.api.video.VideoPrefetchDriveAccess
+import id.homebase.api.video.resolveVideoMetadata
 import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.image.HomebaseImageLoader
 import id.homebase.core.image.ImageSize
 import id.homebase.core.image.thumbSizesFrom
 import id.homebase.photos.PhotoConfig
 import id.homebase.photos.domain.PhotoItem
+import id.homebase.photos.viewer.VideoHandle
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -35,6 +41,7 @@ class PhotosRepositoryImpl(
     private val credentialsManager: CredentialsManager,
     private val imageLoader: HomebaseImageLoader,
     private val driveFileProvider: DriveFileProvider,
+    private val fileOps: FileOperationsProvider,
 ) : PhotosRepository {
 
     private val _photos = MutableStateFlow<List<PhotoItem>>(emptyList())
@@ -83,20 +90,71 @@ class PhotosRepositoryImpl(
 
     override suspend fun loadThumbnailBytes(item: PhotoItem, maxDim: Int): ByteArray? {
         val file = lookupFile(item.fileId) ?: return null
+        return imageLoader.loadThumbnail(imageDataFor(item, file), ImageSize(maxDim, maxDim))?.bytes
+    }
+
+    override suspend fun loadOriginalBytes(item: PhotoItem): ByteArray? {
+        val file = lookupFile(item.fileId) ?: return null
+        return imageLoader.loadFullPayload(imageDataFor(item, file, loadFullPayload = true))?.bytes
+    }
+
+    override suspend fun prepareVideo(item: PhotoItem): VideoHandle? {
+        val file = lookupFile(item.fileId) ?: return null
         val payload = file.fileMetadata.getPayloadDescriptor(item.payloadKey)
-        val data = HomebaseImageData(
+        val keyHeader = perPayloadKeyHeader(file.keyHeader, payload)
+        val playerData = VideoPlayerData(
+            fileId = item.fileId,
+            driveId = item.driveId,
+            payloadKey = item.payloadKey,
+            keyHeader = keyHeader,
+            descriptorContent = payload?.descriptorContent,
+        )
+        // ponytail: HLS playback deferred — decrypt-to-temp mp4 only; chat-kmp loopback path if needed
+        if (isSegmentedVideo(playerData, driveFileProvider)) return null
+        val mimeType = payload?.contentType ?: item.payloadContentType ?: "video/mp4"
+        val outputPath =
+            fileOps.getCacheDirectory().trimEnd('/') + "/" + viewerVideoFileName(item.fileId, mimeType)
+        val streamed = try {
+            driveFileProvider.streamPayloadDecryptedToPath(
+                driveId = item.driveId,
+                fileId = item.fileId,
+                key = item.payloadKey,
+                keyHeader = keyHeader,
+                outputPath = outputPath,
+                fileOps = fileOps,
+            )
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Logger.w(tag = TAG) { "prepareVideo(${item.fileId}) stream failed: ${e.message}" }
+            false
+        }
+        return if (streamed) VideoHandle(filePath = outputPath, mimeType = mimeType) else null
+    }
+
+    override suspend fun disposeVideo(handle: VideoHandle) {
+        fileOps.deleteTempFile(handle.filePath)
+    }
+
+    private fun imageDataFor(
+        item: PhotoItem,
+        file: HomebaseFile,
+        loadFullPayload: Boolean = false,
+    ): HomebaseImageData {
+        val payload = file.fileMetadata.getPayloadDescriptor(item.payloadKey)
+        return HomebaseImageData(
             driveId = item.driveId,
             fileId = item.fileId,
             payloadKey = item.payloadKey,
             previewThumbnail = file.fileMetadata.appData.previewThumbnail,
             availableThumbSizes = thumbSizesFrom(payload?.thumbnails),
+            loadFullPayload = loadFullPayload,
             isEncrypted = file.fileMetadata.isEncrypted,
             payloadContentType = payload?.contentType,
             lastModified = payload?.lastModified,
             // Per-payload IV (not the file/metadata IV) or thumbnails decrypt to garbage.
             keyHeader = perPayloadKeyHeader(file.keyHeader, payload),
         )
-        return imageLoader.loadThumbnail(data, ImageSize(maxDim, maxDim))?.bytes
     }
 
     private suspend fun lookupFile(fileId: Uuid): HomebaseFile? {
@@ -118,3 +176,32 @@ class PhotosRepositoryImpl(
         private const val TAG = "PhotosRepository"
     }
 }
+
+/**
+ * True only when the descriptor positively says segmented/HLS. A missing or unreadable
+ * descriptor counts as plain — decrypt-to-temp still works for a whole-file payload,
+ * while a false "segmented" would refuse a playable video.
+ */
+internal suspend fun isSegmentedVideo(
+    data: VideoPlayerData,
+    access: VideoPrefetchDriveAccess,
+): Boolean {
+    if (data.descriptorContent == null) return false
+    return try {
+        resolveVideoMetadata(data, access).isSegmented
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        Logger.w(tag = "PhotosRepository") { "video metadata resolve failed for ${data.fileId}: ${e.message}" }
+        false
+    }
+}
+
+/** Cache-dir file name for a decrypted viewer video; extension from the payload MIME, default mp4. */
+internal fun viewerVideoFileName(fileId: Uuid, mimeType: String?): String =
+    "viewer_$fileId." + when (mimeType?.lowercase()) {
+        "video/quicktime" -> "mov"
+        "video/x-m4v" -> "m4v"
+        "video/webm" -> "webm"
+        else -> "mp4"
+    }

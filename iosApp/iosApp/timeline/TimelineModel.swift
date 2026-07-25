@@ -27,6 +27,7 @@ final class TimelineModel: ObservableObject {
     private var observeTask: Task<Void, Never>?
     private var eventsTask: Task<Void, Never>?
     private var toastHideTask: Task<Void, Never>?
+    private var photosChangedObserver: NSObjectProtocol?
 
     private var columns: Int = 4
     private var latestItems: [PhotoItem] = []
@@ -53,6 +54,12 @@ final class TimelineModel: ObservableObject {
                     self.showToast("\(deleted.count) deleted")
                 }
             }
+        }
+        // The viewer pings on close after any delete — refresh so the grid drops stale cells.
+        photosChangedObserver = NotificationCenter.default.addObserver(
+            forName: .hbPhotosChanged, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.vm.refresh() }
         }
     }
 
@@ -112,6 +119,9 @@ final class TimelineModel: ObservableObject {
         observeTask?.cancel()
         eventsTask?.cancel()
         toastHideTask?.cancel()
+        if let photosChangedObserver {
+            NotificationCenter.default.removeObserver(photosChangedObserver)
+        }
     }
 }
 

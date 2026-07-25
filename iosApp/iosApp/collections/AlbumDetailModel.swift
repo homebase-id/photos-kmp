@@ -15,6 +15,7 @@ final class AlbumDetailModel: ObservableObject {
     @Published private(set) var monthSections: [TimelineMonth] = []
 
     private var observeTask: Task<Void, Never>?
+    private var photosChangedObserver: NSObjectProtocol?
 
     init(album: AlbumItem) {
         vm = PhotosModuleKt.albumDetailViewModel(album: album)
@@ -31,6 +32,12 @@ final class AlbumDetailModel: ObservableObject {
                 self.monthSections = TimelineModel.groupDays(s.sections)
             }
         }
+        // The viewer pings on close after any delete — refresh so the grid drops stale cells.
+        photosChangedObserver = NotificationCenter.default.addObserver(
+            forName: .hbPhotosChanged, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.vm.refresh() }
+        }
     }
 
     /// Open the fullscreen viewer at `item`'s position in the album's flat pager list, routed
@@ -44,5 +51,8 @@ final class AlbumDetailModel: ObservableObject {
 
     deinit {
         observeTask?.cancel()
+        if let photosChangedObserver {
+            NotificationCenter.default.removeObserver(photosChangedObserver)
+        }
     }
 }

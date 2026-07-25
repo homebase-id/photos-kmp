@@ -193,16 +193,9 @@ struct TimelineView: View {
     @ViewBuilder
     private var toastView: some View {
         if let message = model.toastMessage {
-            Text(message)
-                .font(PhotosFont.bodyMedium)
-                .foregroundColor(PhotosColor.onSurface(scheme))
-                .padding(.horizontal, PhotosMetrics.space16)
-                .padding(.vertical, PhotosMetrics.space12)
-                .background(PhotosColor.surface3(scheme))
-                .clipShape(Capsule())
+            ToastCapsule(message: message, a11yId: "timeline-toast")
                 .padding(.bottom, PhotosMetrics.space24)
                 .transition(.move(edge: .bottom).combined(with: .opacity))
-                .accessibilityIdentifier("timeline-toast")
         }
     }
 

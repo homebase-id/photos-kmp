@@ -29,6 +29,8 @@ import id.homebase.photos.data.PhotosRepositoryImpl
 import id.homebase.photos.domain.AlbumItem
 import id.homebase.photos.domain.PhotoItem
 import id.homebase.photos.timeline.TimelineViewModel
+import id.homebase.photos.viewer.VideoHandle
+import id.homebase.photos.viewer.ViewerViewModel
 import kotlin.uuid.Uuid
 import org.koin.core.module.Module
 import org.koin.mp.KoinPlatform
@@ -52,6 +54,7 @@ val photosModule = module {
             credentialsManager = get(),
             imageLoader = get(),
             driveFileProvider = get(),
+            fileOps = get(),
         )
     }
 
@@ -189,3 +192,19 @@ fun youAuthFlowManager(): YouAuthFlowManager = KoinPlatform.getKoin().get()
 /** iOS-callable: decoded thumbnail bytes via the repository (SKIE exposes only top-level funcs). */
 suspend fun loadThumbnailBytes(item: PhotoItem, maxDim: Int): ByteArray? =
     KoinPlatform.getKoin().get<PhotosRepository>().loadThumbnailBytes(item, maxDim)
+
+/** iOS-callable factory: viewer VM over [items] starting at [initialIndex] (Android builds it via koin.get()). */
+fun viewerViewModel(items: List<PhotoItem>, initialIndex: Int): ViewerViewModel =
+    ViewerViewModel(items, initialIndex, KoinPlatform.getKoin().get())
+
+/** iOS-callable: full-res decrypted payload bytes via the repository. */
+suspend fun loadOriginalBytes(item: PhotoItem): ByteArray? =
+    KoinPlatform.getKoin().get<PhotosRepository>().loadOriginalBytes(item)
+
+/** iOS-callable: decrypt [item]'s video to a temp file the platform player can open. */
+suspend fun prepareVideo(item: PhotoItem): VideoHandle? =
+    KoinPlatform.getKoin().get<PhotosRepository>().prepareVideo(item)
+
+/** iOS-callable: delete a prepared video's temp file. */
+suspend fun disposeVideo(handle: VideoHandle) =
+    KoinPlatform.getKoin().get<PhotosRepository>().disposeVideo(handle)

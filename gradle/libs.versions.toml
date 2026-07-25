@@ -27,6 +27,7 @@ atomicfu = "0.32.1"
 # Compose UI screens. Pinned to chat-kmp's value.
 composeMultiplatform = "1.10.3"
 coil3 = "3.4.0"
+telephoto = "0.16.0"
 cryptography = "0.5.0"
 ffmpegKit = "1.0"
 filekit = "0.13.0"
@@ -58,6 +59,7 @@ coil3 = { group = "io.coil-kt.coil3", name = "coil", version.ref = "coil3" }
 # backed by an ImageLoader wired with the shared HomebaseImageFetcher/Keyer. No coil-network
 # artifact: bytes come from DriveFileProvider via the custom Fetcher, not Coil's HTTP stack.
 coil3-compose = { group = "io.coil-kt.coil3", name = "coil-compose", version.ref = "coil3" }
+telephoto-zoomable-image-coil3 = { module = "me.saket.telephoto:zoomable-image-coil3", version.ref = "telephoto" }
 cryptography-core = { module = "dev.whyoleg.cryptography:cryptography-core", version.ref = "cryptography" }
 cryptography-provider-optimal = { module = "dev.whyoleg.cryptography:cryptography-provider-optimal", version.ref = "cryptography" }
 kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "kotlinx-coroutines" }

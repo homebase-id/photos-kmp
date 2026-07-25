@@ -2,31 +2,28 @@ import SwiftUI
 import UIKit
 import Shared
 
-/// Fullscreen photo viewer — a page-style pager over the dark viewer scrim (design §5.3).
-/// Each page loads progressively: the already-cached 300-max-dim grid thumbnail paints
-/// frame-0 (no black flash), then the sharp 1200-max-dim tier crossfades in. A single tap
-/// toggles chrome (close + date); chrome auto-hides after 3s. A downward drag past the
-/// threshold dismisses. MVP scope — no zoom, no action bar, no original-payload streaming,
-/// no video playback (T17).
+/// Fullscreen photo viewer — a page-style pager over the dark viewer scrim (design §5.3),
+/// driven by the shared `ViewerViewModel` (Batch B). Each still page loads progressively
+/// (cached 300 grid tier → sharp 1200 tier crossfade) and supports pinch/double-tap zoom;
+/// video pages play through the shared decrypt-to-temp pipeline. A single tap toggles chrome
+/// (top: close + date; bottom: Share · Delete · Info glass bar); chrome auto-hides after 3s
+/// on stills. A downward drag past the threshold dismisses (disabled while zoomed).
 struct ViewerView: View {
     @Environment(\.colorScheme) private var scheme
 
-    let items: [PhotoItem]
-    let onDismiss: () -> Void
+    @StateObject private var model: ViewerModel
 
-    /// Pre-zipped (Int tag, item) rows — a wrapper because Swift key paths can't index a tuple,
-    /// so `ForEach` needs a nominal Identifiable to key pages by the stable `fileId`.
-    private let entries: [IndexedItem]
-
-    @State private var index: Int
     @State private var chromeVisible = true
     @State private var dragOffset: CGFloat = 0
+    @State private var isZoomed = false
+    @State private var showDeleteAlert = false
+    @State private var showInfoSheet = false
+    @State private var shareBundle: ShareBundle?
 
     init(items: [PhotoItem], initialIndex: Int, onDismiss: @escaping () -> Void) {
-        self.items = items
-        self.onDismiss = onDismiss
-        self.entries = items.enumerated().map { IndexedItem(tag: $0.offset, item: $0.element) }
-        _index = State(initialValue: max(0, min(initialIndex, items.count - 1)))
+        _model = StateObject(
+            wrappedValue: ViewerModel(items: items, initialIndex: initialIndex, onDismiss: onDismiss)
+        )
     }
 
     /// Downward drag past this point dismisses (design §5.3).
@@ -39,24 +36,39 @@ struct ViewerView: View {
         return f
     }()
 
+    /// Pager selection bridged through the shared VM so `index` stays the single source of truth.
+    private var selection: Binding<Int> {
+        Binding(
+            get: { model.index },
+            set: { model.setIndex($0) }
+        )
+    }
+
     var body: some View {
         ZStack {
             PhotosColor.scrim(scheme).ignoresSafeArea()
 
-            TabView(selection: $index) {
+            TabView(selection: selection) {
                 ForEach(entries) { entry in
-                    ViewerPage(item: entry.item)
+                    page(for: entry)
                         .tag(entry.tag)
                 }
             }
             .tabViewStyle(.page(indexDisplayMode: .never))
             .ignoresSafeArea()
+            .scrollDisabled(isZoomed)
             .offset(y: dragOffset)
 
             if chromeVisible {
                 topChrome.transition(.opacity)
             }
         }
+        .overlay(alignment: .bottom) {
+            if chromeVisible {
+                bottomBar.transition(.opacity)
+            }
+        }
+        .overlay(alignment: .bottom) { errorToast }
         .accessibilityIdentifier("viewer-root")
         .statusBarHidden(!chromeVisible)
         .contentShape(Rectangle())
@@ -64,7 +76,48 @@ struct ViewerView: View {
         // Simultaneous (not high-priority) so the pager keeps its horizontal swipe; the vertical
         // guard below keeps this from offsetting during a page change.
         .simultaneousGesture(dismissDrag)
+        .task { model.start() }
         .task(id: chromeGuardKey) { await autoHideChrome() }
+        // Delete confirmation — same alert form + copy as the timeline (C5).
+        .alert("Delete 1 item?", isPresented: $showDeleteAlert) {
+            Button("Delete", role: .destructive) {
+                Task { await model.deleteCurrent() }
+            }
+            .accessibilityIdentifier("delete-confirm")
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("They'll be removed from your Homebase photo library.")
+        }
+        .sheet(isPresented: $showInfoSheet) {
+            if let item = model.currentItem {
+                ViewerInfoSheet(item: item)
+            }
+        }
+        .sheet(item: $shareBundle) { bundle in
+            ShareSheet(items: bundle.items)
+                .presentationDetents([.medium, .large])
+        }
+    }
+
+    private var entries: [IndexedItem] {
+        model.items.enumerated().map { IndexedItem(tag: $0.offset, item: $0.element) }
+    }
+
+    @ViewBuilder
+    private func page(for entry: IndexedItem) -> some View {
+        let isCurrent = entry.tag == model.index
+        if entry.item.isVideo {
+            ViewerVideoPage(item: entry.item, isCurrent: isCurrent, model: model)
+        } else {
+            ViewerPage(item: entry.item, isCurrent: isCurrent) { zoomed in
+                isZoomed = zoomed
+                // Google-Photos parity: zooming in drops the chrome out of the way (also masks
+                // the ancestor single-tap that can co-fire with the page's double-tap).
+                if zoomed && chromeVisible {
+                    withAnimation(.easeInOut(duration: 0.2)) { chromeVisible = false }
+                }
+            }
+        }
     }
 
     // MARK: - Chrome
@@ -84,7 +137,7 @@ struct ViewerView: View {
                 .allowsHitTesting(false)
 
                 HStack(spacing: PhotosMetrics.space8) {
-                    Button(action: onDismiss) {
+                    Button(action: { model.requestClose() }) {
                         Image(systemName: "xmark")
                             .font(.system(size: 18, weight: .semibold))
                             .foregroundColor(PhotosColor.onOverlay(scheme))
@@ -107,9 +160,65 @@ struct ViewerView: View {
         }
     }
 
+    /// Share · Delete · Info on one Liquid Glass capsule over the scrim.
+    /// favorite/add-to-album deliberately absent — Batches D/C.
+    private var bottomBar: some View {
+        HStack(spacing: 0) {
+            actionButton("square.and.arrow.up", label: "Share", id: "viewer-share") {
+                Task { await share() }
+            }
+            actionButton("trash", label: "Delete", id: "viewer-delete") {
+                showDeleteAlert = true
+            }
+            actionButton("info.circle", label: "Info", id: "viewer-info") {
+                showInfoSheet = true
+            }
+        }
+        .padding(.vertical, PhotosMetrics.space8)
+        .padding(.horizontal, PhotosMetrics.space8)
+        .frame(maxWidth: 360)
+        .glassEffect(.regular, in: Capsule())
+        .padding(.horizontal, PhotosMetrics.space24)
+        .padding(.bottom, PhotosMetrics.space8)
+        .disabled(model.isDeleting)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("viewer-actionbar")
+    }
+
+    private func actionButton(
+        _ systemName: String,
+        label: String,
+        id: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            VStack(spacing: PhotosMetrics.space4) {
+                Image(systemName: systemName)
+                    .font(.system(size: 20, weight: .medium))
+                Text(label)
+                    .font(PhotosFont.caption)
+            }
+            .foregroundColor(PhotosColor.onOverlay(scheme))
+            .frame(maxWidth: .infinity)
+            .frame(minHeight: 44)
+            .contentShape(Rectangle())
+        }
+        .accessibilityLabel(label)
+        .accessibilityIdentifier(id)
+    }
+
+    @ViewBuilder
+    private var errorToast: some View {
+        if let message = model.errorMessage {
+            ToastCapsule(message: message, a11yId: "viewer-toast")
+                .padding(.bottom, 96)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+        }
+    }
+
     private var dateText: String? {
-        guard items.indices.contains(index) else { return nil }
-        let date = Date(timeIntervalSince1970: Double(items[index].userDate) / 1000.0)
+        guard let item = model.currentItem else { return nil }
+        let date = Date(timeIntervalSince1970: Double(item.userDate) / 1000.0)
         return Self.dateFormatter.string(from: date)
     }
 
@@ -118,14 +227,25 @@ struct ViewerView: View {
     }
 
     /// Restarts on every chrome-show or page change (id changes); hides after 3s of no interaction.
-    private var chromeGuardKey: String { "\(chromeVisible)-\(index)" }
+    private var chromeGuardKey: String { "\(chromeVisible)-\(model.index)" }
 
     @MainActor
     private func autoHideChrome() async {
         guard chromeVisible else { return }
+        // Keep chrome up on video pages — AVKit's controls consume taps, so a hidden close
+        // button there would be unrecoverable.
+        guard model.currentItem?.isVideo != true else { return }
         try? await Task.sleep(nanoseconds: 3_000_000_000)
         guard !Task.isCancelled, chromeVisible else { return }
         withAnimation(.easeInOut(duration: 0.2)) { chromeVisible = false }
+    }
+
+    // MARK: - Share
+
+    private func share() async {
+        guard let item = model.currentItem else { return }
+        guard let items = await model.shareItems(for: item) else { return }
+        shareBundle = ShareBundle(items: items)
     }
 
     // MARK: - Dismiss drag
@@ -133,6 +253,7 @@ struct ViewerView: View {
     private var dismissDrag: some Gesture {
         DragGesture(minimumDistance: 12)
             .onChanged { value in
+                guard !isZoomed else { return }
                 let h = value.translation.height
                 // Vertical-dominant downward drag only — leave horizontal paging to the TabView.
                 if h > 0 && h > abs(value.translation.width) {
@@ -140,14 +261,21 @@ struct ViewerView: View {
                 }
             }
             .onEnded { value in
+                guard !isZoomed else { return }
                 let h = value.translation.height
                 if h > Self.dismissThreshold && h > abs(value.translation.width) {
-                    onDismiss()
+                    model.requestClose()
                 } else {
                     withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) { dragOffset = 0 }
                 }
             }
     }
+}
+
+/// A share payload wrapped for `.sheet(item:)` presentation.
+private struct ShareBundle: Identifiable {
+    let id = UUID()
+    let items: [Any]
 }
 
 /// A pager row: the item plus its Int position (the TabView selection tag). Identity is the
@@ -158,16 +286,20 @@ private struct IndexedItem: Identifiable {
     var id: String { item.fileId.description }
 }
 
-/// One pager page: a progressively-loaded photo (or video poster) centered over a darkened
-/// ambient backdrop (neutral base + blurred inline placeholder) so a cold page never
-/// flashes pure black before the placeholder decodes.
+/// One still page: a progressively-loaded photo centered over a darkened ambient backdrop
+/// (neutral base + blurred inline placeholder) so a cold page never flashes pure black.
+/// The image layer is zoomable (pinch/double-tap/pan); zoom resets when the page stops
+/// being current and is reported up so the pager/dismiss gestures can be gated.
 private struct ViewerPage: View {
     @Environment(\.colorScheme) private var scheme
     let item: PhotoItem
+    let isCurrent: Bool
+    let onZoomChanged: (Bool) -> Void
 
     @State private var frame0: UIImage?
     @State private var hiRes: UIImage?
     @State private var placeholder: UIImage?
+    @State private var zoomed = false
 
     /// The grid already cached this tier for visible cells → an instant frame-0.
     private static let frame0MaxDim = 300
@@ -177,25 +309,30 @@ private struct ViewerPage: View {
     /// Decoded inline placeholders keyed by fileId — decode base64 once, never in `body`.
     private static let placeholderCache = NSCache<NSString, UIImage>()
 
-
     var body: some View {
         ZStack {
             ambientBackdrop
+            imageLayer
+                .zoomable(isZoomed: $zoomed)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .clipped()
+        .task(id: item.fileId.description) { await load() }
+        .onChange(of: zoomed) { _, z in onZoomChanged(z) }
+        .onChange(of: isCurrent) { _, current in
+            if !current { zoomed = false }
+        }
+    }
+
+    private var imageLayer: some View {
+        ZStack {
             if let frame0 {
                 Image(uiImage: frame0).resizable().scaledToFit()
             }
             if let hiRes {
                 Image(uiImage: hiRes).resizable().scaledToFit().transition(.opacity)
             }
-            if item.isVideo {
-                // video playback: T17
-                Image(systemName: "play.fill")
-                    .font(.system(size: 48))
-                    .foregroundColor(PhotosColor.onOverlay(scheme))
-            }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .task(id: item.fileId.description) { await load() }
     }
 
     /// Darkened ambient behind the letterboxed photo — canonical `Color.clear`.overlay.clipped

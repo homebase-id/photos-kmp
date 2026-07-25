@@ -39,6 +39,10 @@ dependencies {
     implementation(libs.androidx.composeLifecycle.runtime)
     implementation(libs.koin.android)
     implementation(libs.coil3.compose)
+    // Viewer video playback (Batch B): decrypt-to-temp files played via ExoPlayer + PlayerView.
+    implementation(libs.androidx.media3.exoplayer)
+    implementation(libs.androidx.media3.ui)
+    implementation(libs.telephoto.zoomable.image.coil3)
     implementation(libs.androidx.work.runtime)
     implementation(libs.androidx.browser)
     implementation(libs.androidx.navigation.compose)

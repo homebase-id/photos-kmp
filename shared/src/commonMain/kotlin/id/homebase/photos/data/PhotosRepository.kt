@@ -1,6 +1,7 @@
 package id.homebase.photos.data
 
 import id.homebase.photos.domain.PhotoItem
+import id.homebase.photos.viewer.VideoHandle
 import kotlinx.coroutines.flow.Flow
 import kotlin.uuid.Uuid
 
@@ -30,4 +31,13 @@ interface PhotosRepository {
      * `HomebaseImageLoader`. Returns null when the bytes can't be loaded.
      */
     suspend fun loadThumbnailBytes(item: PhotoItem, maxDim: Int): ByteArray?
+
+    /** Full-res decrypted payload bytes for [item] (stills share/save). Null when unavailable. */
+    suspend fun loadOriginalBytes(item: PhotoItem): ByteArray?
+
+    /** Decrypt [item]'s video payload to a cache temp file. Null = can't play (missing/segmented). */
+    suspend fun prepareVideo(item: PhotoItem): VideoHandle?
+
+    /** Delete [handle]'s temp file. */
+    suspend fun disposeVideo(handle: VideoHandle)
 }
