@@ -1,16 +1,23 @@
 import SwiftUI
+import Shared
 
-/// The Create tab — a minimal, honest placeholder this batch. One "New album" row opens a sheet
-/// that says album creation is not here yet. Real create flows land in a later batch.
+/// The Create tab. "New album" opens the shared name sheet (C3) and the created album opens
+/// straight away in Collections. Collage / animation / cinematic remain out of scope.
 struct CreateView: View {
     @Environment(\.colorScheme) private var scheme
-    @State private var showPlaceholder = false
+    @EnvironmentObject private var router: Router
+    @StateObject private var model = AlbumsModel()
+
+    @State private var showCreate = false
+    /// Set by a successful create; the jump happens in the sheet's `onDismiss` so the pushed
+    /// screen never races the sheet's dismissal animation.
+    @State private var createdAlbum: AlbumItem?
 
     var body: some View {
         NavigationStack {
             List {
                 Button {
-                    showPlaceholder = true
+                    showCreate = true
                 } label: {
                     Label("New album", systemImage: "rectangle.stack.badge.plus")
                         .foregroundColor(PhotosColor.onSurface(scheme))
@@ -20,34 +27,35 @@ struct CreateView: View {
             .navigationTitle("Create")
             .navigationBarTitleDisplayMode(.inline)
             .accessibilityIdentifier("create-root")
+            .overlay(alignment: .bottom) { toastView }
         }
         .tint(PhotosColor.primary(scheme))
-        .sheet(isPresented: $showPlaceholder) {
-            CreatePlaceholderSheet()
+        .task { model.start() }
+        .sheet(isPresented: $showCreate, onDismiss: openCreatedAlbum) {
+            AlbumNameSheet(
+                title: "New album",
+                confirmLabel: "Create",
+                identifier: "create-album-dialog"
+            ) { name in
+                guard let album = await model.create(name: name) else { return false }
+                createdAlbum = album
+                return true
+            }
         }
     }
-}
 
-/// The "coming soon" sheet for Create actions.
-private struct CreatePlaceholderSheet: View {
-    @Environment(\.colorScheme) private var scheme
-    @Environment(\.dismiss) private var dismiss
+    private func openCreatedAlbum() {
+        guard let album = createdAlbum else { return }
+        createdAlbum = nil
+        router.openAlbum(album)
+    }
 
-    var body: some View {
-        VStack(spacing: PhotosMetrics.space16) {
-            Image(systemName: "rectangle.stack.badge.plus")
-                .font(.system(size: 40))
-                .foregroundColor(PhotosColor.onSurfaceVariant(scheme))
-            Text("Album creation arrives in the next update.")
-                .font(PhotosFont.body)
-                .foregroundColor(PhotosColor.onSurfaceVariant(scheme))
-                .multilineTextAlignment(.center)
-            Button("Close") { dismiss() }
-                .font(PhotosFont.label)
-                .foregroundColor(PhotosColor.primary(scheme))
+    @ViewBuilder
+    private var toastView: some View {
+        if let message = model.toastMessage {
+            ToastCapsule(message: message, a11yId: "create-toast")
+                .padding(.bottom, PhotosMetrics.space24)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
         }
-        .padding(PhotosMetrics.space32)
-        .presentationDetents([.medium])
-        .accessibilityIdentifier("create-placeholder")
     }
 }

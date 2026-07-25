@@ -8,19 +8,25 @@ struct HomeTabView: View {
     @StateObject private var router = Router()
 
     var body: some View {
-        TabView {
+        // Selection is router state (not TabView-local) so Create → "open the new album" can
+        // switch to Collections and push in one call.
+        TabView(selection: $router.selectedTab) {
             TimelineView()
                 .tabItem { Label("Photos", systemImage: "photo.on.rectangle") }
                 .accessibilityIdentifier("tab-photos")
+                .tag(HomeTab.photos)
             CollectionsView()
                 .tabItem { Label("Collections", systemImage: "rectangle.stack") }
                 .accessibilityIdentifier("tab-collections")
+                .tag(HomeTab.collections)
             CreateView()
                 .tabItem { Label("Create", systemImage: "plus.circle") }
                 .accessibilityIdentifier("tab-create")
+                .tag(HomeTab.create)
             SearchView()
                 .tabItem { Label("Search", systemImage: "magnifyingglass") }
                 .accessibilityIdentifier("tab-search")
+                .tag(HomeTab.search)
         }
         .environmentObject(router)
         .accessibilityIdentifier("bottom-nav")

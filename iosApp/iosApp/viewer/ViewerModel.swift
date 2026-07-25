@@ -86,6 +86,11 @@ final class ViewerModel: ObservableObject {
         onDismiss()
     }
 
+    /// Surface a one-line result from a sheet the viewer hosts (add-to-album) in its toast.
+    func note(_ message: String) {
+        showError(message)
+    }
+
     private func showError(_ message: String) {
         errorMessage = message
         errorHideTask?.cancel()

@@ -1,13 +1,19 @@
 import SwiftUI
 import Shared
 
-/// The Collections tab: a 2-column album grid under a compact inline title, pushing
-/// `AlbumDetailView` for a tapped album. State comes from `CollectionsModel` (one shared
-/// `AlbumsViewModel`); this view only renders.
+/// The Collections tab (C1): the library shortcuts card (Favorites/Archive/Trash/Utilities,
+/// disabled until Batch D) above a 2-column album grid, pushing `AlbumDetailView` for a tapped
+/// album. The toolbar `+` creates an album (C3) and opens it once the sheet is gone.
+/// State comes from `AlbumsModel` (one shared `AlbumsViewModel`); this view only renders.
 struct CollectionsView: View {
     @Environment(\.colorScheme) private var scheme
     @EnvironmentObject private var router: Router
-    @StateObject private var model = CollectionsModel()
+    @StateObject private var model = AlbumsModel()
+
+    @State private var showCreate = false
+    /// Set by a successful create; the push happens in the sheet's `onDismiss` so the new
+    /// screen never races the sheet's dismissal animation.
+    @State private var createdAlbum: AlbumItem?
 
     var body: some View {
         NavigationStack(path: $router.path) {
@@ -21,8 +27,21 @@ struct CollectionsView: View {
                         .accessibilityElement(children: .ignore)
                         .accessibilityIdentifier("collections-root")
                 )
+                .overlay(alignment: .bottom) { toastView }
                 .navigationTitle("Collections")
                 .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button(action: { showCreate = true }) {
+                            Image(systemName: "plus")
+                                .font(.system(size: 20, weight: .semibold))
+                                .foregroundColor(PhotosColor.primary(scheme))
+                                .frame(width: 32, height: 32)
+                        }
+                        .accessibilityLabel("New album")
+                        .accessibilityIdentifier("collections-add")
+                    }
+                }
                 .navigationDestination(for: Route.self) { route in
                     switch route {
                     case .albumDetail(let album):
@@ -32,14 +51,53 @@ struct CollectionsView: View {
         }
         .tint(PhotosColor.primary(scheme))
         .task { model.start() }
+        .sheet(isPresented: $showCreate, onDismiss: openCreatedAlbum) {
+            AlbumNameSheet(
+                title: "New album",
+                confirmLabel: "Create",
+                identifier: "create-album-dialog"
+            ) { name in
+                guard let album = await model.create(name: name) else { return false }
+                createdAlbum = album
+                return true
+            }
+        }
     }
 
-    // MARK: - State branching
+    private func openCreatedAlbum() {
+        guard let album = createdAlbum else { return }
+        createdAlbum = nil
+        router.push(.albumDetail(album))
+    }
 
-    @ViewBuilder
+    // MARK: - Content
+
     private var content: some View {
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 0) {
+                LibrarySection()
+                albumsHeader
+                albumsBody
+            }
+            .padding(.bottom, PhotosMetrics.space24)
+        }
+        .refreshable { try? await model.vm.refreshAndWait() }
+    }
+
+    private var albumsHeader: some View {
+        Text("Albums")
+            .font(PhotosFont.monthHeader)
+            .foregroundColor(PhotosColor.onBackground(scheme))
+            .padding(.horizontal, PhotosMetrics.screenEdge)
+            .padding(.top, PhotosMetrics.space24)
+            .padding(.bottom, PhotosMetrics.space8)
+    }
+
+    /// State branching for the album section only — the library card above always renders.
+    @ViewBuilder
+    private var albumsBody: some View {
         let state = model.uiState
-        let albums = state?.albums ?? []
+        let albums = model.albums
         if state == nil || (state!.isLoading && albums.isEmpty) {
             skeleton
         } else if albums.isEmpty, let message = state?.error {
@@ -52,7 +110,7 @@ struct CollectionsView: View {
         } else if albums.isEmpty {
             EmptyStateView(
                 title: "No albums yet",
-                message: "Albums in your Homebase library will show up here.",
+                message: "Tap + to make one, or add photos to an album from the timeline.",
                 identifier: "collections-empty"
             )
         } else {
@@ -63,18 +121,19 @@ struct CollectionsView: View {
     // MARK: - Grid
 
     private func grid(_ albums: [AlbumSummary]) -> some View {
-        ScrollView {
-            LazyVGrid(columns: twoColumns, spacing: PhotosMetrics.space16) {
-                ForEach(albums, id: \.album.fileId.description) { summary in
-                    NavigationLink(value: Route.albumDetail(summary.album)) {
-                        AlbumCard(summary: summary)
-                    }
-                    .buttonStyle(.plain)
+        LazyVGrid(columns: twoColumns, spacing: PhotosMetrics.space16) {
+            ForEach(albums, id: \.album.fileId.description) { summary in
+                NavigationLink(value: Route.albumDetail(summary.album)) {
+                    AlbumCard(summary: summary)
                 }
+                .buttonStyle(.plain)
             }
-            .padding(PhotosMetrics.screenEdge)
         }
-        .refreshable { try? await model.vm.refreshAndWait() }
+        .padding(.horizontal, PhotosMetrics.screenEdge)
+        // `.contain` (not the default) so the grid itself vends an AX element for the id while
+        // the cards stay reachable — the id no longer rides the ScrollView, which is shared
+        // with the library card above.
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("collections-grid")
     }
 
@@ -87,17 +146,25 @@ struct CollectionsView: View {
 
     /// Loading placeholder: six quiet rounded squares in the album-grid layout.
     private var skeleton: some View {
-        ScrollView {
-            LazyVGrid(columns: twoColumns, spacing: PhotosMetrics.space16) {
-                ForEach(0..<6, id: \.self) { _ in
-                    RoundedRectangle(cornerRadius: PhotosMetrics.radiusAlbumCover)
-                        .fill(PhotosColor.surfaceVariant(scheme))
-                        .aspectRatio(1, contentMode: .fit)
-                }
+        LazyVGrid(columns: twoColumns, spacing: PhotosMetrics.space16) {
+            ForEach(0..<6, id: \.self) { _ in
+                RoundedRectangle(cornerRadius: PhotosMetrics.radiusAlbumCover)
+                    .fill(PhotosColor.surfaceVariant(scheme))
+                    .aspectRatio(1, contentMode: .fit)
             }
-            .padding(PhotosMetrics.screenEdge)
         }
+        .padding(.horizontal, PhotosMetrics.screenEdge)
         .allowsHitTesting(false)
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("collections-skeleton")
+    }
+
+    @ViewBuilder
+    private var toastView: some View {
+        if let message = model.toastMessage {
+            ToastCapsule(message: message, a11yId: "collections-toast")
+                .padding(.bottom, PhotosMetrics.space24)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+        }
     }
 }

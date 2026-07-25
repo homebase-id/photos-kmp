@@ -1,14 +1,21 @@
 import SwiftUI
 
 /// Selection-mode top bar per C5: X (`selection-close`) · "N selected" (`selection-count`) ·
-/// trash (`selection-delete`). Callers hide the navigation bar and mount this via
+/// the actions the host supports. Callers hide the navigation bar and mount this via
 /// `.safeAreaInset(edge: .top)` while selection is active — swapping beats covering the
 /// large-title layer.
+///
+/// Every action is optional, so one bar serves both hosts: the Timeline shows add-to-album +
+/// trash, the album detail shows set-cover (only with exactly one photo picked) + remove. The
+/// ids are fixed per action because the action itself is what a test looks for.
 struct SelectionTopBar: View {
     @Environment(\.colorScheme) private var scheme
     let count: Int
     let onClose: () -> Void
-    let onDelete: () -> Void
+    var onAddToAlbum: (() -> Void)?
+    var onDelete: (() -> Void)?
+    var onSetCover: (() -> Void)?
+    var onRemoveFromAlbum: (() -> Void)?
 
     var body: some View {
         HStack(spacing: PhotosMetrics.space8) {
@@ -29,20 +36,65 @@ struct SelectionTopBar: View {
 
             Spacer()
 
-            Button(action: onDelete) {
-                Image(systemName: "trash")
-                    .font(.system(size: 17, weight: .semibold))
-                    .foregroundColor(PhotosColor.error(scheme))
-                    .frame(width: 44, height: 44)
-                    .contentShape(Rectangle())
+            if let onAddToAlbum {
+                action(
+                    "rectangle.stack.badge.plus",
+                    label: "Add to album",
+                    id: "selection-add",
+                    tint: PhotosColor.onSurface(scheme),
+                    perform: onAddToAlbum
+                )
             }
-            .accessibilityLabel("Delete selected")
-            .accessibilityIdentifier("selection-delete")
+            if let onSetCover {
+                action(
+                    "photo.badge.checkmark",
+                    label: "Set as cover",
+                    id: "album-setcover",
+                    tint: PhotosColor.onSurface(scheme),
+                    perform: onSetCover
+                )
+            }
+            if let onRemoveFromAlbum {
+                action(
+                    "minus.circle",
+                    label: "Remove from album",
+                    id: "album-remove",
+                    tint: PhotosColor.onSurface(scheme),
+                    perform: onRemoveFromAlbum
+                )
+            }
+            if let onDelete {
+                action(
+                    "trash",
+                    label: "Delete selected",
+                    id: "selection-delete",
+                    tint: PhotosColor.error(scheme),
+                    perform: onDelete
+                )
+            }
         }
         .padding(.horizontal, PhotosMetrics.space8)
         .frame(maxWidth: .infinity)
         .background(PhotosColor.surface(scheme), ignoresSafeAreaEdges: .top)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("selection-topbar")
+    }
+
+    private func action(
+        _ systemName: String,
+        label: String,
+        id: String,
+        tint: Color,
+        perform: @escaping () -> Void
+    ) -> some View {
+        Button(action: perform) {
+            Image(systemName: systemName)
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundColor(tint)
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
+        }
+        .accessibilityLabel(label)
+        .accessibilityIdentifier(id)
     }
 }

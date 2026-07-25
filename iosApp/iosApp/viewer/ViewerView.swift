@@ -18,6 +18,7 @@ struct ViewerView: View {
     @State private var isZoomed = false
     @State private var showDeleteAlert = false
     @State private var showInfoSheet = false
+    @State private var showAddToAlbum = false
     @State private var shareBundle: ShareBundle?
 
     init(items: [PhotoItem], initialIndex: Int, onDismiss: @escaping () -> Void) {
@@ -97,6 +98,12 @@ struct ViewerView: View {
             ShareSheet(items: bundle.items)
                 .presentationDetents([.medium, .large])
         }
+        // Add-to-album for the photo on screen (C3) — same picker as the timeline selection.
+        .sheet(isPresented: $showAddToAlbum) {
+            AddToAlbumSheet(photos: model.currentItem.map { [$0] } ?? []) { message, _ in
+                model.note(message)
+            }
+        }
     }
 
     private var entries: [IndexedItem] {
@@ -160,12 +167,15 @@ struct ViewerView: View {
         }
     }
 
-    /// Share · Delete · Info on one Liquid Glass capsule over the scrim.
-    /// favorite/add-to-album deliberately absent — Batches D/C.
+    /// Share · Add · Delete · Info on one Liquid Glass capsule over the scrim.
+    /// favorite deliberately absent — Batch D.
     private var bottomBar: some View {
         HStack(spacing: 0) {
             actionButton("square.and.arrow.up", label: "Share", id: "viewer-share") {
                 Task { await share() }
+            }
+            actionButton("rectangle.stack.badge.plus", label: "Add", id: "viewer-addto") {
+                showAddToAlbum = true
             }
             actionButton("trash", label: "Delete", id: "viewer-delete") {
                 showDeleteAlert = true

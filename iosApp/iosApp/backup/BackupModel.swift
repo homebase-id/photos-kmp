@@ -4,7 +4,7 @@ import Photos
 import Shared
 
 /// Owns the shared `BackupViewModel` across SwiftUI struct re-inits (same `@StateObject` + SKIE
-/// `for await` pattern as `TimelineModel`/`CollectionsModel`). This view-model only mirrors the
+/// `for await` pattern as `TimelineModel`/`AlbumsModel`). This view-model only mirrors the
 /// shared state and forwards actions — the one iOS-specific step is the Photos permission gate
 /// on enable: iOS needs read/write library access before we can read + back up originals.
 @MainActor

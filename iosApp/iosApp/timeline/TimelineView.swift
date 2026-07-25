@@ -17,6 +17,7 @@ struct TimelineView: View {
     @State private var showLogoutDialog = false
     @State private var showDeleteDialog = false
     @State private var showBackup = false
+    @State private var showAddToAlbum = false
 
     private var inSelectionMode: Bool { model.uiState?.inSelectionMode == true }
     private var selectedCount: Int { model.uiState?.selectedIds.count ?? 0 }
@@ -76,6 +77,7 @@ struct TimelineView: View {
                     SelectionTopBar(
                         count: selectedCount,
                         onClose: { model.vm.clearSelection() },
+                        onAddToAlbum: { showAddToAlbum = true },
                         onDelete: { showDeleteDialog = true }
                     )
                 }
@@ -113,6 +115,14 @@ struct TimelineView: View {
         }
         .task { model.start() }
         .sheet(isPresented: $showBackup) { BackupView() }
+        // Add-to-album from the selection (C3). The picker owns its own AlbumsViewModel and
+        // reports one line back; a landed add leaves selection mode, like a completed action.
+        .sheet(isPresented: $showAddToAlbum) {
+            AddToAlbumSheet(photos: model.uiState?.selectedPhotos ?? []) { message, landed in
+                model.note(message)
+                if landed { model.vm.clearSelection() }
+            }
+        }
     }
 
     private var deleteTitle: String {

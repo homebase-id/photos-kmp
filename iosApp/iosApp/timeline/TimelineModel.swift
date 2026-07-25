@@ -72,6 +72,11 @@ final class TimelineModel: ObservableObject {
         }
     }
 
+    /// Surface a one-line result from a sheet the timeline hosts (add-to-album) in its toast.
+    func note(_ message: String) {
+        showToast(message)
+    }
+
     /// Grid width changed → recompute how many tail items should prefetch the next page.
     func setColumns(_ c: Int) {
         let clamped = max(1, c)
