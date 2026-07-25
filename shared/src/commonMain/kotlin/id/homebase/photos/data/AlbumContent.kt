@@ -47,6 +47,12 @@ internal fun parseLenientUuid(raw: String?): Uuid? {
         ?: runCatching { Uuid.parseHex(trimmed) }.getOrNull()
 }
 
+/**
+ * A fresh album tag. Held as a [Uuid] so drive API args stay dashed (chat-kmp source of truth);
+ * it is only ever SERIALIZED bare-hex, by [newAlbumContentJson] / [patchAlbumContent].
+ */
+internal fun newAlbumTag(): Uuid = Uuid.random()
+
 /** Content JSON for a brand-new album: `{"name":…,"description"?:…,"tag":"<bare hex>"}`. */
 internal fun newAlbumContentJson(name: String, tag: Uuid, description: String? = null): String =
     albumContentWriter.encodeToString(

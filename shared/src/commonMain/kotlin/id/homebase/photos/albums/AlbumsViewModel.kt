@@ -40,6 +40,9 @@ sealed interface AlbumsEvent {
     data class Deleted(val album: AlbumItem) : AlbumsEvent
     data class CoverSet(val album: AlbumItem) : AlbumsEvent
     data class PhotosAdded(val albumTag: Uuid, val added: Int, val failed: Int) : AlbumsEvent
+
+    /** The intent was refused because another write is still in flight — nothing was sent. */
+    data object Busy : AlbumsEvent
 }
 
 class AlbumsViewModel(
@@ -166,7 +169,12 @@ class AlbumsViewModel(
      * while the optimistic patch keeps the grid responsive.
      */
     private suspend fun <T> mutate(fallbackMessage: String, block: suspend () -> T): T? {
-        if (_state.value.isMutating) return null
+        if (_state.value.isMutating) {
+            // Never drop a write silently: without this the caller just sees null (or `false`
+            // from deleteAndWait) and reports it as a server refusal.
+            _events.tryEmit(AlbumsEvent.Busy)
+            return null
+        }
         _state.update { it.copy(isMutating = true) }
         return try {
             block().also {
@@ -193,7 +201,35 @@ class AlbumsViewModel(
             Logger.w(tag = TAG) { "post-write sync failed: ${e.message}" }
             return // keep the optimistic state; the next refresh reconciles
         }
-        refreshAndWait()
+        reconcile()
+    }
+
+    /**
+     * Post-write reload with no visible seam: the grid is already painted and correct, so this
+     * never raises [AlbumsUiState.isLoading] (no spinner) and re-uses every cover it already
+     * resolved (no blank tiles, no re-query) — only genuinely new albums, and albums whose
+     * pinned cover changed, resolve a cover here.
+     */
+    private suspend fun reconcile() {
+        val albums = try {
+            repository.loadAlbums()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Logger.w(tag = TAG) { "post-write reload failed: ${e.message}" }
+            return // keep the optimistic state
+        }
+        val cached = _state.value.albums.associateBy { it.album.fileId }
+        fun reusableCover(album: AlbumItem): PhotoItem? = cached[album.fileId]
+            ?.takeIf { it.album.coverFileId == album.coverFileId }
+            ?.cover
+        _state.update { s -> s.copy(albums = albums.map { AlbumSummary(it, reusableCover(it)) }) }
+        val summaries = coroutineScope {
+            albums.map { album ->
+                async { AlbumSummary(album, reusableCover(album) ?: resolveCover(album)) }
+            }.awaitAll()
+        }
+        _state.update { it.copy(albums = summaries) }
     }
 
     private fun replaceAlbum(album: AlbumItem) {

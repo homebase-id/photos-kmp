@@ -287,6 +287,63 @@ class AlbumsViewModelTest {
     }
 
     @Test
+    fun postWriteReconcile_keepsCoversAndNeverFlashesTheSpinner() = runTest(dispatcher) {
+        val trip = album("Trip")
+        val cover = photo(2_000L)
+        val repo = FakeAlbumsRepository(
+            albums = listOf(trip),
+            photosByAlbum = mapOf(trip.albumId to listOf(cover)),
+        )
+        val vm = AlbumsViewModel(repo)
+        val states = mutableListOf<AlbumsUiState>()
+        val collector = launch { vm.state.collect { states += it } }
+        advanceUntilIdle()
+        val coverLoadsAfterFirstPaint = repo.coverLoads
+        states.clear()
+
+        vm.renameAndWait(trip, "Roadtrip")
+        advanceUntilIdle()
+
+        assertTrue(states.isNotEmpty())
+        assertTrue(states.none { it.isLoading }, "a post-write reload must not flash the grid spinner")
+        assertTrue(
+            states.none { s -> s.albums.any { it.cover == null } },
+            "already-resolved covers must survive the reconcile",
+        )
+        assertEquals(
+            coverLoadsAfterFirstPaint,
+            repo.coverLoads,
+            "an unchanged cover is re-used, never re-queried",
+        )
+        assertEquals("Roadtrip", vm.state.value.albums.single().album.name)
+        collector.cancel()
+    }
+
+    @Test
+    fun secondWriteWhileOneIsInFlight_isRefusedWithABusyEvent() = runTest(dispatcher) {
+        val trip = album("Trip")
+        val gate = CompletableDeferred<Unit>()
+        val repo = FakeAlbumsRepository(albums = listOf(trip), writeGate = gate)
+        val vm = AlbumsViewModel(repo)
+        val events = mutableListOf<AlbumsEvent>()
+        val collector = launch { vm.events.collect { events += it } }
+        advanceUntilIdle()
+
+        vm.createAlbum("Roadtrip") // parks on the gate, holding isMutating
+        advanceUntilIdle()
+        assertTrue(vm.state.value.isMutating)
+
+        // The refusal must be visible — a bare `false` here reads as a server refusal to the UI.
+        assertFalse(vm.deleteAndWait(trip))
+        assertEquals(listOf(AlbumsEvent.Busy), events)
+        assertEquals(listOf("Trip"), vm.state.value.albums.map { it.album.name })
+
+        gate.complete(Unit)
+        advanceUntilIdle()
+        collector.cancel()
+    }
+
+    @Test
     fun createAlbumWithPhotos_createsThenTagsIntoTheNewAlbum() = runTest(dispatcher) {
         val repo = FakeAlbumsRepository()
         val vm = AlbumsViewModel(repo)

@@ -24,6 +24,8 @@ internal class FakeAlbumsRepository(
     var failMembershipFor: Set<Uuid> = emptySet(),
     /** Parks cover resolution so a test can observe the names-first emission. */
     val photosGate: CompletableDeferred<Unit>? = null,
+    /** Parks [createAlbum] so a test can fire a second write while the first is in flight. */
+    val writeGate: CompletableDeferred<Unit>? = null,
 ) : AlbumsRepository {
 
     val albums: MutableList<AlbumItem> = albums.toMutableList()
@@ -31,6 +33,10 @@ internal class FakeAlbumsRepository(
         photosByAlbum.mapValues { it.value.toMutableList() }.toMutableMap()
 
     var syncCount = 0
+        private set
+
+    /** How many times a cover had to be resolved — a reconcile must not re-run these. */
+    var coverLoads = 0
         private set
     val addCalls = mutableListOf<Pair<Uuid, List<Uuid>>>()
     val removeCalls = mutableListOf<Pair<Uuid, List<Uuid>>>()
@@ -48,11 +54,13 @@ internal class FakeAlbumsRepository(
 
     override suspend fun loadPhoto(fileId: Uuid): PhotoItem? {
         photosGate?.await()
+        coverLoads++
         return localPhotos[fileId]
     }
 
     override suspend fun loadNewestAlbumPhoto(albumId: Uuid): PhotoItem? {
         photosGate?.await()
+        coverLoads++
         return membership[albumId]?.firstOrNull()
     }
 
@@ -61,6 +69,7 @@ internal class FakeAlbumsRepository(
     }
 
     override suspend fun createAlbum(name: String, description: String?): AlbumItem {
+        writeGate?.await()
         if (writeThrows) throw IllegalStateException("create exploded")
         val album = AlbumItem(
             fileId = Uuid.random(),
