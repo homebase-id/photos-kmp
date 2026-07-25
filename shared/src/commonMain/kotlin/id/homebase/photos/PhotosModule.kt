@@ -60,13 +60,18 @@ val photosModule = module {
 
     factory { TimelineViewModel(get(), get()) } // eventBus: sync-completion reload
 
-    // Albums: files off the local index, membership via server queryBatch (both apiModule deps).
+    // Albums: files off the local index, membership via server queryBatch, writes straight to
+    // the server (upload/update/delete providers are apiModule factories). driveSyncManager is
+    // bound below — it's what makes a freshly written album file reach the local index.
     single<AlbumsRepository> {
         AlbumsRepositoryImpl(
             driveId = Uuid.parseHex(PhotoConfig.DRIVE_ALIAS),
             databaseManager = get(),
             credentialsManager = get(),
             driveQueryProvider = get(),
+            driveFileProvider = get(),
+            driveUploadProvider = get(),
+            driveSyncManager = get(),
         )
     }
     factory { AlbumsViewModel(get()) }

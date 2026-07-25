@@ -37,6 +37,9 @@ data class TimelineUiState(
     val inSelectionMode: Boolean get() = selectedIds.isNotEmpty()
 
     fun isSelected(photo: PhotoItem): Boolean = photo.fileId.toString() in selectedIds
+
+    /** The selected photos in grid order — what delete and add-to-album act on. */
+    val selectedPhotos: List<PhotoItem> get() = pagedItems.filter { isSelected(it) }
 }
 
 /** A month bucket: full-month title ("June 2026") + its photos, newest first. */
@@ -127,7 +130,7 @@ class TimelineViewModel(
     suspend fun deleteSelectedAndWait() {
         val current = _state.value
         if (current.isDeleting || current.selectedIds.isEmpty()) return
-        val doomed = current.pagedItems.filter { current.isSelected(it) }
+        val doomed = current.selectedPhotos
         _state.update { it.copy(isDeleting = true) }
         val deleted = try {
             repository.deletePhotos(doomed.map { it.fileId })

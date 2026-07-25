@@ -1,10 +1,10 @@
 package id.homebase.photos.albums
 
-import id.homebase.photos.data.AlbumsRepository
 import id.homebase.photos.domain.AlbumItem
 import id.homebase.photos.domain.PhotoItem
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
@@ -20,25 +20,12 @@ import kotlin.test.assertTrue
 import kotlin.uuid.Uuid
 
 /**
- * Album detail contract (C3): title paints from the album name before the photo load
- * lands; photos group into month sections exactly like the timeline.
+ * Album detail contract (C3): title paints from the album name before the photo load lands;
+ * photos group into month sections exactly like the timeline; selection mirrors the timeline's
+ * (dashed-Uuid string keys, "any id selected" == selection mode) and drives remove-from-album,
+ * which untags the photos without deleting them.
  */
 class AlbumDetailViewModelTest {
-
-    /** Fake repo: fixed photos for one album; failure/gating knobs per test. */
-    private class FakeAlbumsRepository(
-        private val photos: List<PhotoItem> = emptyList(),
-        var loadPhotosThrows: Boolean = false,
-        val photosGate: CompletableDeferred<Unit>? = null,
-    ) : AlbumsRepository {
-        override suspend fun loadAlbums(): List<AlbumItem> = emptyList()
-
-        override suspend fun loadAlbumPhotos(albumId: Uuid): List<PhotoItem> {
-            photosGate?.await()
-            if (loadPhotosThrows) throw IllegalStateException("photos exploded")
-            return photos
-        }
-    }
 
     private fun album(name: String): AlbumItem = AlbumItem(
         fileId = Uuid.random(),
@@ -76,6 +63,9 @@ class AlbumDetailViewModelTest {
         Dispatchers.resetMain()
     }
 
+    private fun repoWith(album: AlbumItem, photos: List<PhotoItem>) =
+        FakeAlbumsRepository(albums = listOf(album), photosByAlbum = mapOf(album.albumId to photos))
+
     @Test
     fun titleSeededFromAlbumName_beforeLoadCompletes() = runTest(dispatcher) {
         val gate = CompletableDeferred<Unit>()
@@ -90,8 +80,9 @@ class AlbumDetailViewModelTest {
 
     @Test
     fun loadGroupsPhotosIntoMonthSections() = runTest(dispatcher) {
+        val roadtrip = album("Roadtrip")
         val photos = listOf(photo(jun28_2026), photo(jun14_2026), photo(may05_2026))
-        val vm = AlbumDetailViewModel(album("Roadtrip"), FakeAlbumsRepository(photos = photos))
+        val vm = AlbumDetailViewModel(roadtrip, repoWith(roadtrip, photos))
         advanceUntilIdle()
 
         val state = vm.state.value
@@ -110,5 +101,140 @@ class AlbumDetailViewModelTest {
         assertFalse(state.isLoading)
         assertNotNull(state.error)
         assertTrue(state.photos.isEmpty())
+    }
+
+    // --- selection (parity with the timeline) ---------------------------------------------
+
+    @Test
+    fun toggleSelection_entersSelectionMode_andKeysAreDashedUuids() = runTest(dispatcher) {
+        val roadtrip = album("Roadtrip")
+        val a = photo(jun28_2026)
+        val b = photo(jun14_2026)
+        val vm = AlbumDetailViewModel(roadtrip, repoWith(roadtrip, listOf(a, b)))
+        advanceUntilIdle()
+
+        vm.toggleSelection(a)
+
+        val state = vm.state.value
+        assertTrue(state.inSelectionMode)
+        assertTrue(state.isSelected(a))
+        assertFalse(state.isSelected(b))
+        assertEquals(setOf(a.fileId.toString()), state.selectedIds)
+        assertTrue(state.selectedIds.single().contains("-"), "keys must be dashed, never bare hex")
+        assertEquals(listOf(a), state.selectedPhotos)
+    }
+
+    @Test
+    fun toggleSelection_samePhotoTwice_exitsSelectionMode() = runTest(dispatcher) {
+        val roadtrip = album("Roadtrip")
+        val a = photo(jun28_2026)
+        val vm = AlbumDetailViewModel(roadtrip, repoWith(roadtrip, listOf(a)))
+        advanceUntilIdle()
+
+        vm.toggleSelection(a)
+        vm.toggleSelection(a)
+
+        assertFalse(vm.state.value.inSelectionMode)
+    }
+
+    @Test
+    fun clearSelection_emptiesSelectedIds() = runTest(dispatcher) {
+        val roadtrip = album("Roadtrip")
+        val a = photo(jun28_2026)
+        val b = photo(jun14_2026)
+        val vm = AlbumDetailViewModel(roadtrip, repoWith(roadtrip, listOf(a, b)))
+        advanceUntilIdle()
+
+        vm.toggleSelection(a)
+        vm.toggleSelection(b)
+        vm.clearSelection()
+
+        assertTrue(vm.state.value.selectedIds.isEmpty())
+        assertFalse(vm.state.value.inSelectionMode)
+    }
+
+    // --- remove from album -----------------------------------------------------------------
+
+    @Test
+    fun removeSelected_untagsThePhotosAndPrunesTheGrid() = runTest(dispatcher) {
+        val roadtrip = album("Roadtrip")
+        val a = photo(jun28_2026)
+        val b = photo(jun14_2026)
+        val repo = repoWith(roadtrip, listOf(a, b))
+        val vm = AlbumDetailViewModel(roadtrip, repo)
+        val events = mutableListOf<AlbumDetailEvent>()
+        val collector = launch { vm.events.collect { events += it } }
+        advanceUntilIdle()
+
+        vm.toggleSelection(a)
+        vm.removeSelectedAndWait()
+        advanceUntilIdle()
+
+        val state = vm.state.value
+        assertEquals(listOf(b), state.photos)
+        assertEquals(listOf("June 2026"), state.sections.map { it.title })
+        assertTrue(state.selectedIds.isEmpty())
+        assertFalse(state.isRemoving)
+        // Untag only — the photo file itself is never deleted.
+        assertEquals(listOf(roadtrip.albumId to listOf(a.fileId)), repo.removeCalls)
+        assertEquals(listOf(AlbumDetailEvent.Removed(1)), events)
+        collector.cancel()
+    }
+
+    @Test
+    fun removeSelected_partialFailure_keepsTheOnesThatDidNotLand() = runTest(dispatcher) {
+        val roadtrip = album("Roadtrip")
+        val a = photo(jun28_2026)
+        val b = photo(jun14_2026)
+        val repo = repoWith(roadtrip, listOf(a, b))
+        repo.failMembershipFor = setOf(b.fileId)
+        val vm = AlbumDetailViewModel(roadtrip, repo)
+        val events = mutableListOf<AlbumDetailEvent>()
+        val collector = launch { vm.events.collect { events += it } }
+        advanceUntilIdle()
+
+        vm.toggleSelection(a)
+        vm.toggleSelection(b)
+        vm.removeSelectedAndWait()
+        advanceUntilIdle()
+
+        assertEquals(listOf(b), vm.state.value.photos, "only the failed one stays in the album")
+        assertEquals(listOf(AlbumDetailEvent.Removed(1)), events.filterIsInstance<AlbumDetailEvent.Removed>())
+        assertTrue(events.any { it is AlbumDetailEvent.Error })
+        collector.cancel()
+    }
+
+    @Test
+    fun removeSelected_withNothingSelected_isANoOp() = runTest(dispatcher) {
+        val roadtrip = album("Roadtrip")
+        val repo = repoWith(roadtrip, listOf(photo(jun28_2026)))
+        val vm = AlbumDetailViewModel(roadtrip, repo)
+        advanceUntilIdle()
+
+        vm.removeSelectedAndWait()
+        advanceUntilIdle()
+
+        assertTrue(repo.removeCalls.isEmpty())
+    }
+
+    @Test
+    fun removeSelected_failure_emitsErrorAndKeepsTheGrid() = runTest(dispatcher) {
+        val roadtrip = album("Roadtrip")
+        val a = photo(jun28_2026)
+        val repo = repoWith(roadtrip, listOf(a))
+        val vm = AlbumDetailViewModel(roadtrip, repo)
+        val events = mutableListOf<AlbumDetailEvent>()
+        val collector = launch { vm.events.collect { events += it } }
+        advanceUntilIdle()
+
+        vm.toggleSelection(a)
+        repo.writeThrows = true
+        vm.removeSelectedAndWait()
+        advanceUntilIdle()
+
+        assertEquals(listOf(a), vm.state.value.photos)
+        assertFalse(vm.state.value.isRemoving, "a failed remove must not wedge later ones")
+        assertTrue(events.single() is AlbumDetailEvent.Error)
+        collector.cancel()
     }
 }
