@@ -96,9 +96,8 @@ fun TimelineScreen(
 /**
  * Stateless timeline screen. A [Scaffold] carries the "Photos" top bar (swapped for the selection
  * bar while photos are selected — contract C5) and a snackbar host; inside it, one of four content
- * branches renders — skeleton (first load), empty, error, or the photo grid — with the
- * [backupCard] pinned above the bottom inset over all of them. Edge-to-edge: the grid draws under
- * the system bars, applying the scaffold insets as content padding so items sit below the app bar
+ * branches renders — skeleton (first load), empty, error, or the photo grid. Edge-to-edge: the grid
+ * draws under the system bars, applying the scaffold insets as content padding so items sit below the app bar
  * (design-system §5.2). [imageLoader] is optional so UI tests can render layout/headers without a
  * Coil graph.
  */
@@ -115,7 +114,6 @@ fun TimelineScreen(
     onDeleteSelected: () -> Unit = {},
     imageLoader: ImageLoader? = null,
     snackbarHostState: SnackbarHostState = remember { SnackbarHostState() },
-    backupCard: @Composable () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val gridState = rememberLazyGridState()
@@ -148,43 +146,31 @@ fun TimelineScreen(
         },
         snackbarHost = { SnackbarHost(snackbarHostState) },
     ) { innerPadding ->
-        Box(modifier = Modifier.fillMaxSize()) {
-            BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-                val columns = gridColumnsFor(maxWidth.value)
-                when {
-                    state.isLoading && !hasContent ->
-                        SkeletonGrid(columns = columns, innerPadding = innerPadding)
-                    !state.isLoading && !hasContent && state.error != null ->
-                        ErrorState(message = state.error, onRetry = onRetry, innerPadding = innerPadding)
-                    !hasContent ->
-                        EmptyState(
-                            title = "No photos yet",
-                            message = "Turn on backup to see your camera roll here.",
-                            innerPadding = innerPadding,
-                        )
-                    else ->
-                        TimelineGrid(
-                            state = state,
-                            columns = columns,
-                            gridState = gridState,
-                            innerPadding = innerPadding,
-                            imageLoader = imageLoader,
-                            onPhotoClick = onPhotoClick,
-                            onToggleSelection = onToggleSelection,
-                            onLoadMore = onLoadMore,
-                            onRefresh = onRefresh,
-                        )
-                }
-            }
-            // Backup status surface — floats above the bottom system inset over every branch.
-            Box(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp)
-                    .padding(bottom = innerPadding.calculateBottomPadding() + 16.dp),
-            ) {
-                backupCard()
+        BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+            val columns = gridColumnsFor(maxWidth.value)
+            when {
+                state.isLoading && !hasContent ->
+                    SkeletonGrid(columns = columns, innerPadding = innerPadding)
+                !state.isLoading && !hasContent && state.error != null ->
+                    ErrorState(message = state.error, onRetry = onRetry, innerPadding = innerPadding)
+                !hasContent ->
+                    EmptyState(
+                        title = "No photos yet",
+                        message = "Your photos will appear here once they sync.",
+                        innerPadding = innerPadding,
+                    )
+                else ->
+                    TimelineGrid(
+                        state = state,
+                        columns = columns,
+                        gridState = gridState,
+                        innerPadding = innerPadding,
+                        imageLoader = imageLoader,
+                        onPhotoClick = onPhotoClick,
+                        onToggleSelection = onToggleSelection,
+                        onLoadMore = onLoadMore,
+                        onRefresh = onRefresh,
+                    )
             }
         }
     }

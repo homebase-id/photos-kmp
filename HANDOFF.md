@@ -31,8 +31,14 @@ need owner schema sign-off.
   smoke-tested live via the `-uiTestTimeline` bypass (4 tabs render, Search placeholder navigates). Fixes made by
   verifier: added `ExperimentalMaterial3Api` import in SearchScreen.kt; copied gitignored `local.properties` into worktree.
 - **a11y ids:** all existing preserved; added `tab-create`, `tab-search`/`search-button`, `splash-root`, plus
-  create/search screen ids. **Known-follow-ups:** floating pill can overlap the timeline backup card (nudge later);
-  Android on-device QA still login-gated (owner login needed); final iOS app-icon art pending.
+  create/search screen ids.
+- **Backup card removed from the timeline** (owner: "not needed anymore" — it also overlapped the new pill). Deleted
+  Android `ui/backup/BackupStatusCard.kt` + `BackupCardTest.kt` and all `backupCard` wiring in MainActivity/AppShell/
+  TimelineScreen. **Backup engine kept intact** (BackupManager/BackupScheduler/BackgroundBackup/MediaWatch + shared
+  `BackupViewModel`); background backup still runs off the persisted enabled-flag + folder selection. Backup UI (toggle +
+  folder picker) will resurface as the proper **Settings→Backup screen in Batch G**. Verified live on the Redmi.
+- **Known-follow-ups:** Android on-device QA otherwise login-gated (owner login needed); final iOS app-icon art pending;
+  no in-app backup control until Batch G.
 
 ---
 

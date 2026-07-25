@@ -63,7 +63,6 @@ fun AppShell(
     imageLoader: ImageLoader,
     snackbarHostState: SnackbarHostState,
     onLogout: () -> Unit,
-    backupCard: @Composable () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val navController = rememberNavController()
@@ -119,7 +118,6 @@ fun AppShell(
                     onDeleteSelected = timelineViewModel::deleteSelected,
                     imageLoader = imageLoader,
                     snackbarHostState = snackbarHostState,
-                    backupCard = backupCard,
                 )
             }
 

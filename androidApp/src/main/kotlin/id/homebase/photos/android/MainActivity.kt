@@ -19,10 +19,8 @@ import id.homebase.api.youauth.YouAuthState
 import id.homebase.photos.auth.LoginEvent
 import id.homebase.photos.auth.LoginViewModel
 import id.homebase.photos.backup.BackupManager
-import id.homebase.photos.backup.BackupViewModel
 import id.homebase.photos.timeline.TimelineEvent
 import id.homebase.photos.timeline.TimelineViewModel
-import id.homebase.photos.android.ui.backup.BackupStatusCard
 import id.homebase.photos.android.work.BackupScheduler
 import id.homebase.photos.android.ui.buildHomebaseImageLoader
 import id.homebase.photos.android.ui.home.AppShell
@@ -56,8 +54,6 @@ class MainActivity : ComponentActivity() {
                     is YouAuthState.Authenticated -> {
                         // Shared headless ViewModel (StateFlow<TimelineUiState>) resolved from Koin.
                         val vm = remember { koin.get<TimelineViewModel>() }
-                        // Shared backup ViewModel — same Koin singleton the BackupWorker resolves.
-                        val backupVm = remember { koin.get<BackupViewModel>() }
                         // Coil loader wired with the encrypted Homebase fetcher/keyer.
                         val imageLoader = remember { buildHomebaseImageLoader(this, koin) }
                         // Same Koin singleton the BackupWorker/card resolve — used to reconcile on launch.
@@ -99,12 +95,6 @@ class MainActivity : ComponentActivity() {
                             // Logout runs in lifecycleScope (survives the recomposition the authState
                             // flip triggers); the root gate above then swaps back to the login screen.
                             onLogout = { lifecycleScope.launch { youAuth.logout() } },
-                            backupCard = {
-                                BackupStatusCard(
-                                    viewModel = backupVm,
-                                    snackbarHostState = snackbarHostState,
-                                )
-                            },
                         )
                     }
                     else -> {
