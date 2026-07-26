@@ -19,6 +19,45 @@ target is now **26.0** (bumped on `photos-mvp` `32ebd7e`, merged here), so Liqui
 agents in parallel → one verifier build pass. Shared `StateFlow<UiState>` stays the source of truth; new on-drive formats
 need owner schema sign-off.
 
+**Batch E — Search (done, review-clean on `photos-ui-batch-e` `4b81aa6..bf5f2ac`; 2026-07-26 evening; identity server back up — sim session restored, fixed builds installed on Redmi + sim, owner manual QA in progress):**
+- **Scope shipped:** metadata search — date range + type (photo/video) + album filter + free text matching **album
+  names** (case-insensitive substring; union of matching albums' members, deduped; **no-match text query = zero
+  results by design**, never falls through to the library). No ML. **NO new on-drive format**: local reads via a new
+  `selectPhotosInDateRangePage` (`DriveMainIndex.sq`, exact `selectPhotosPage` predicate + `userDate BETWEEN`),
+  album branch reuses the server `queryBatch` tag path (`archivalStatus [0,1,3]`), results capped 500 newest-first.
+- **Shared:** `search/` package — `SearchCriteria`, `RecentSearchesStore` (KeyValue blob, fixed key, cap 10,
+  case-insensitive dedupe, à la `BackupFolderSelectionStore`), `SearchViewModel` (`SearchUiState`: query/date/type/
+  album filters, `sections` via `groupIntoMonthSections`, recents, isSearching/hasSearched/error). ALL searches —
+  submit and filter-triggered — funnel through one tracked `searchJob` (cancel-before-launch, job-identity guard on
+  state resets) so stale responses can never clobber fresh ones; `submitAndWait` keeps the SKIE-awaitable shape.
+  Koin `factory` + `searchViewModel()` resolver. `:shared:jvmTest` 1198 green (27 search).
+- **Android:** `SearchScreen` rewrite — enabled field, horizontally-scrollable chip row (Date = M3 `DateRangePicker`,
+  Type = All/Photos/Videos, Album = reused `AlbumPickerSheet`), month grid from `PhotoGridCell`+`MonthHeader`,
+  Favorites-pattern viewer nav, recents while idle AND while composing (`!hasSearched` gate, not `isIdle`),
+  `LinearProgressIndicator` + error banner over stale results. `SearchFlowTest` 17 cases; `AppShellNavTest` updated.
+- **iOS:** `SearchView` rework — `.searchable` + `.searchScopes`, chips + `DateRangeSheet` (**picks local-calendar
+  Y/M/D then builds UTC bounds** — IST-safe; end-of-day .999 = Android parity) + `AlbumFilterSheet`, grid from
+  `PhotoCell`+`MonthHeader`, error toast via `ToastCapsule`, thin `search-progress` bar over stale results (skeleton
+  only when empty). New files hand-registered in pbxproj (classic groups — NOT xcodegen'd; keep pattern). `SearchUITest`
+  + `ShellNavUITest` updated (idle Search = recents now, not empty state).
+- **Ids (both platforms):** keep `search-screen`/`search-back`/`search-field`; new `search-results-grid`,
+  `search-chip-date/type/album`, `search-recent`, `search-empty`, `search-error`, `search-error-banner`,
+  `search-progress`, `search-clear`.
+- **Verified:** full matrix green (jvmTest 1195→1198, android+iosSim compiles, assembleDebug + androidTest compile,
+  iOS build + full XCUITest bundle — SearchUITest pass; MainFlowUITest fail was the pre-server-restore logged-out sim,
+  env-only). Final whole-branch review (Critical no-match fallthrough + iOS submit-race + date TZ shift) fixed +
+  re-reviewed clean in `a6fb0e9`+`bf5f2ac`. Connected Android tests still never run on the Redmi (would wipe login).
+- **DEFERRED (owner-visible):** **filename search** (no filename column in `DriveMainIndex`/`PhotoItem` — needs a
+  projection from drive metadata) and **source/folder filter** (same gap — plan doc lists it but no backing field
+  exists; owner call on adding one). **fileType-900 aggregate file skipped** — local DB search is the v1 path;
+  revisit only if Redmi latency measures slow (schema gate applies if added).
+- **Deferred minors (ledgered):** sleep-poll test helpers; KDoc density; filter-tap-cancels-recents-push edge;
+  AlbumPickerSheet "New album" dead row in filter context; topBar progress/error layout shift; clearing query without
+  submit keeps stale results (deliberate, both platforms); raw `e.message` in UI errors (repo-wide convention — sweep
+  candidate); iOS AX tree reads empty via argent describe (sim-env quirk; XCUITest ids work).
+- **On-device QA gate (owner):** date + type=video filters return correct results on the Redmi; query latency check on
+  the Redmi decides the aggregate-file question; album filter + free-text album match; recents survive app restart.
+
 **Batch D — Favorites · Archive · Trash (done, review-clean on `photos-ui-batch-d` `6b4435f..c5dc8e4`; 2026-07-26; on-device QA outstanding):**
 - **SCHEMA (mirrors the official photo-app exactly — no new on-drive shape minted):** favorite = tag
   `Md5.toGuidId("favorite")` = hex `8a6b6ea3aa08285be1d4e00725aa9090` in the PHOTO's `appData.tags` (test-pinned,
