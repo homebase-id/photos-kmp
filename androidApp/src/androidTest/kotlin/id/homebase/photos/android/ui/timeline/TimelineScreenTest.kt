@@ -19,7 +19,6 @@ import id.homebase.photos.domain.PhotoItem
 import id.homebase.photos.timeline.TimelineSection
 import id.homebase.photos.timeline.TimelineUiState
 import id.homebase.photos.android.ui.theme.PhotosTheme
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -185,48 +184,34 @@ class TimelineScreenTest {
         composeRule.onAllNodesWithTag("timeline-month-overlay").assertCountEquals(0)
     }
 
-    // --- Logout affordance (account button → confirmation dialog). The top bar renders for every
-    // content branch, so an empty state is enough to exercise the account action. ---
+    // --- Account affordance (Batch G): the account button navigates to Settings — the logout
+    // dialog lives there now (see SettingsFlowTest). The top bar renders for every content branch,
+    // so an empty state is enough to exercise the account action. ---
 
     private fun emptyState() =
         TimelineUiState(isLoading = false, sections = emptyList(), pagedItems = emptyList())
 
     @Test
-    fun accountButtonOpensLogoutDialog() {
+    fun accountButtonInvokesOnOpenSettings() {
+        var opened = false
         composeRule.setContent {
-            PhotosTheme { TimelineScreen(state = emptyState()) }
+            PhotosTheme { TimelineScreen(state = emptyState(), onOpenSettings = { opened = true }) }
         }
 
         composeRule.onNodeWithTag("account-button").assertIsDisplayed().performClick()
 
-        composeRule.onNodeWithTag("logout-confirm").assertIsDisplayed()
-        composeRule.onNodeWithText("Log out?").assertExists()
+        assertTrue(opened)
     }
 
     @Test
-    fun confirmingLogoutInvokesOnLogout() {
-        var loggedOut = false
+    fun accountButtonOpensNoDialogInline() {
         composeRule.setContent {
-            PhotosTheme { TimelineScreen(state = emptyState(), onLogout = { loggedOut = true }) }
+            PhotosTheme { TimelineScreen(state = emptyState()) }
         }
 
         composeRule.onNodeWithTag("account-button").performClick()
-        composeRule.onNodeWithTag("logout-confirm").performClick()
-
-        assertTrue(loggedOut)
-    }
-
-    @Test
-    fun cancelingLogoutDismissesDialogWithoutLoggingOut() {
-        var loggedOut = false
-        composeRule.setContent {
-            PhotosTheme { TimelineScreen(state = emptyState(), onLogout = { loggedOut = true }) }
-        }
-
-        composeRule.onNodeWithTag("account-button").performClick()
-        composeRule.onNodeWithText("Cancel").performClick()
 
         composeRule.onNodeWithTag("logout-confirm").assertDoesNotExist()
-        assertFalse(loggedOut)
+        composeRule.onNodeWithText("Log out?").assertDoesNotExist()
     }
 }

@@ -12,6 +12,8 @@ sealed class Route(val path: String) {
     data object Favorites : Route("favorites")
     data object Archive : Route("archive")
     data object Trash : Route("trash")
+    data object Settings : Route("settings")
+    data object Backup : Route("backup")
 
     data object AlbumDetail : Route("album/{albumId}") {
         const val ARG = "albumId"

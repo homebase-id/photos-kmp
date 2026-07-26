@@ -21,7 +21,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Archive
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.PhotoAlbum
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -30,7 +29,6 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -81,7 +79,7 @@ fun TimelineScreen(
     viewModel: TimelineViewModel,
     imageLoader: ImageLoader,
     onPhotoClick: (PhotoItem) -> Unit = {},
-    onLogout: () -> Unit = {},
+    onOpenSettings: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -91,7 +89,7 @@ fun TimelineScreen(
         onLoadMore = viewModel::loadMore,
         onRefresh = viewModel::refresh,
         onRetry = viewModel::refresh,
-        onLogout = onLogout,
+        onOpenSettings = onOpenSettings,
         onToggleSelection = viewModel::toggleSelection,
         onClearSelection = viewModel::clearSelection,
         onDeleteSelected = viewModel::deleteSelected,
@@ -117,7 +115,7 @@ fun TimelineScreen(
     onLoadMore: () -> Unit = {},
     onRefresh: () -> Unit = {},
     onRetry: () -> Unit = {},
-    onLogout: () -> Unit = {},
+    onOpenSettings: () -> Unit = {},
     onToggleSelection: (PhotoItem) -> Unit = {},
     onClearSelection: () -> Unit = {},
     onDeleteSelected: () -> Unit = {},
@@ -131,9 +129,8 @@ fun TimelineScreen(
     val gridState = rememberLazyGridState()
     val hasContent = state.sections.isNotEmpty()
 
-    // Ephemeral UI state — the two confirmations. Logout runs via [onLogout] (hoisted to the
-    // Activity's lifecycleScope); delete runs via [onDeleteSelected] (shared VM).
-    var showLogoutDialog by remember { mutableStateOf(false) }
+    // Ephemeral UI state — the delete confirmation. Logout now lives on the Settings screen;
+    // the account button only navigates there via [onOpenSettings].
     var showDeleteDialog by remember { mutableStateOf(false) }
 
     // System back exits selection mode before anything else (C5).
@@ -176,7 +173,7 @@ fun TimelineScreen(
             } else {
                 PhotosTopBar(
                     scrolled = gridState.canScrollBackward,
-                    onAccountClick = { showLogoutDialog = true },
+                    onAccountClick = onOpenSettings,
                 )
             }
         },
@@ -211,15 +208,6 @@ fun TimelineScreen(
         }
     }
 
-    if (showLogoutDialog) {
-        LogoutDialog(
-            onConfirm = {
-                showLogoutDialog = false
-                onLogout()
-            },
-            onDismiss = { showLogoutDialog = false },
-        )
-    }
     if (showDeleteDialog) {
         DeleteConfirmDialog(
             count = state.selectedIds.size,
@@ -230,30 +218,6 @@ fun TimelineScreen(
             onDismiss = { showDeleteDialog = false },
         )
     }
-}
-
-/**
- * Log-out confirmation. Minimal design language: a short title + body, a destructive-reading
- * "Log out" confirm and a "Cancel" dismiss. The confirm is tagged for the flow test.
- */
-@Composable
-private fun LogoutDialog(onConfirm: () -> Unit, onDismiss: () -> Unit) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Log out?") },
-        text = { Text("You'll need to sign in again to see your photos.") },
-        confirmButton = {
-            TextButton(onClick = onConfirm, modifier = Modifier.testTag("logout-confirm")) {
-                Text("Log out")
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel")
-            }
-        },
-        containerColor = MaterialTheme.colorScheme.surface,
-    )
 }
 
 /**

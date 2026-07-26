@@ -36,6 +36,7 @@ import androidx.navigation.navArgument
 import coil3.ImageLoader
 import id.homebase.photos.albums.AlbumsEvent
 import id.homebase.photos.albumsViewModel
+import id.homebase.photos.android.ui.backup.BackupScreen
 import id.homebase.photos.android.ui.collections.AlbumDetailScreen
 import id.homebase.photos.android.ui.collections.CollectionsScreen
 import id.homebase.photos.android.ui.components.AlbumPickerSheet
@@ -47,6 +48,7 @@ import id.homebase.photos.android.ui.library.FavoritesScreen
 import id.homebase.photos.android.ui.library.TrashScreen
 import id.homebase.photos.android.ui.nav.Route
 import id.homebase.photos.android.ui.search.SearchScreen
+import id.homebase.photos.android.ui.settings.SettingsScreen
 import id.homebase.photos.android.ui.timeline.TimelineScreen
 import id.homebase.photos.android.ui.viewer.ViewerScreen
 import id.homebase.photos.archiveViewModel
@@ -166,7 +168,7 @@ fun AppShell(
                     onLoadMore = timelineViewModel::loadMore,
                     onRefresh = timelineViewModel::refresh,
                     onRetry = timelineViewModel::refresh,
-                    onLogout = onLogout,
+                    onOpenSettings = { navController.navigate(Route.Settings.path) },
                     onToggleSelection = timelineViewModel::toggleSelection,
                     onClearSelection = timelineViewModel::clearSelection,
                     onDeleteSelected = timelineViewModel::deleteSelected,
@@ -302,6 +304,19 @@ fun AppShell(
                         },
                     )
                 }
+            }
+
+            composable(Route.Settings.path) {
+                SettingsScreen(
+                    onBack = { navController.popBackStack() },
+                    onOpenBackup = { navController.navigate(Route.Backup.path) },
+                    // Runs on the Activity's lifecycleScope (survives the authState flip).
+                    onLogout = onLogout,
+                )
+            }
+
+            composable(Route.Backup.path) {
+                BackupScreen(onBack = { navController.popBackStack() })
             }
 
             composable(Route.Search.path) {

@@ -30,8 +30,8 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 
 /**
- * Minimal "Photos" top bar over `surface` — small title, 32dp avatar action top-right (opens the
- * log-out dialog via [onAccountClick]). A 1dp `outline` hairline fades in only once the grid has
+ * Minimal "Photos" top bar over `surface` — small title, 32dp avatar action top-right (opens
+ * Settings via [onAccountClick]). A 1dp `outline` hairline fades in only once the grid has
  * scrolled.
  */
 @Composable

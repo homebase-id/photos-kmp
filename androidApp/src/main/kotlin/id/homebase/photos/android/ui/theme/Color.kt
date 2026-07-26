@@ -8,7 +8,8 @@ import androidx.compose.ui.graphics.Color
  * Surfaces are pure neutral (white in light, black in dark) so photos carry all the color, matching
  * Google Photos' visual language. These objects are the static fallback for SDK < 31; on Android 12+
  * dynamic color supplies the accents while Theme.kt pins surface/background to the same neutrals.
- * The fallback accent is Google blue; over-photo overlay tokens are theme-agnostic.
+ * The fallback accent is moss green (Batch G, owner-approved); over-photo overlay tokens are
+ * theme-agnostic.
  */
 
 /** Light theme — pure white ground, near-black text. */
@@ -28,16 +29,16 @@ object PhotosLightColors {
     // Grid gaps are the background itself — white hairlines between thumbnails.
     val GridGap = Color(0xFFFFFFFF)
 
-    // Accent (Google blue) — fallback only; dynamic color replaces it on SDK 31+.
-    val Primary = Color(0xFF0B57D0)
+    // Accent (moss green) — fallback only; dynamic color replaces it on SDK 31+.
+    val Primary = Color(0xFF5E7A52)
     val OnPrimary = Color(0xFFFFFFFF)
-    val PrimaryContainer = Color(0xFFD3E3FD)
-    val OnPrimaryContainer = Color(0xFF041E49)
+    val PrimaryContainer = Color(0xFFD5E0C7)
+    val OnPrimaryContainer = Color(0xFF1B2815)
 
     val Secondary = Color(0xFF5F6368)
     val OnSecondary = Color(0xFFFFFFFF)
-    val SecondaryContainer = Color(0xFFE8F0FE)
-    val OnSecondaryContainer = Color(0xFF041E49)
+    val SecondaryContainer = Color(0xFFE3E2CE)
+    val OnSecondaryContainer = Color(0xFF24251A)
 
     // Text / icon
     val OnBackground = Color(0xFF1A1A1A)
@@ -78,11 +79,11 @@ object PhotosDarkColors {
     // Grid gaps are the background itself — black hairlines between thumbnails.
     val GridGap = Color(0xFF000000)
 
-    // Accent (Google blue, lightened for dark-mode contrast) — fallback only.
-    val Primary = Color(0xFFA8C7FA)
-    val OnPrimary = Color(0xFF062E6F)
-    val PrimaryContainer = Color(0xFF0842A0)
-    val OnPrimaryContainer = Color(0xFFD3E3FD)
+    // Accent (moss green, lightened for dark-mode contrast) — fallback only.
+    val Primary = Color(0xFFA6C394)
+    val OnPrimary = Color(0xFF1B2815)
+    val PrimaryContainer = Color(0xFF3C4D30)
+    val OnPrimaryContainer = Color(0xFFD5E0C7)
 
     val Secondary = Color(0xFFBDC1C6)
     val OnSecondary = Color(0xFF202124)
