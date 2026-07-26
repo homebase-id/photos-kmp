@@ -203,7 +203,9 @@ fun AppShell(
                         val idx = items.indexOfFirst { it.fileId == photo.fileId }
                         if (idx >= 0) {
                             viewerBridge.items = items
-                            viewerBridge.onClosed = { deletedAny -> if (deletedAny) favoritesVm.refresh() }
+                            // Unconditional: the viewer's favorite toggle can drop this item from
+                            // the grid it was opened from, not just a delete (lazy fix — no live-patch).
+                            viewerBridge.onClosed = { favoritesVm.refresh() }
                             navController.navigate(Route.Viewer.path(idx))
                         }
                     },
@@ -221,7 +223,8 @@ fun AppShell(
                         val idx = items.indexOfFirst { it.fileId == photo.fileId }
                         if (idx >= 0) {
                             viewerBridge.items = items
-                            viewerBridge.onClosed = { deletedAny -> if (deletedAny) archiveVm.refresh() }
+                            // Symmetric with Favorites — refresh unconditionally on close.
+                            viewerBridge.onClosed = { archiveVm.refresh() }
                             navController.navigate(Route.Viewer.path(idx))
                         }
                     },

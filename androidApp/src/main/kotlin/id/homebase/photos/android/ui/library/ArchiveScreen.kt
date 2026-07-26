@@ -2,17 +2,24 @@ package id.homebase.photos.android.ui.library
 
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Unarchive
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.ImageLoader
 import id.homebase.photos.android.ui.components.SelectionTopBar
 import id.homebase.photos.domain.PhotoItem
+import id.homebase.photos.library.ArchiveEvent
 import id.homebase.photos.library.ArchiveUiState
 import id.homebase.photos.library.ArchiveViewModel
 
-/** Stateful Archive grid: renders the shared [ArchiveViewModel] over [LibraryStateScreen]. */
+/**
+ * Stateful Archive grid: renders the shared [ArchiveViewModel] over [LibraryStateScreen] and turns
+ * its one-time [ArchiveEvent]s into snackbars (errors + the unarchive count).
+ */
 @Composable
 fun ArchiveScreen(
     viewModel: ArchiveViewModel,
@@ -22,6 +29,18 @@ fun ArchiveScreen(
     modifier: Modifier = Modifier,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    LaunchedEffect(viewModel) {
+        viewModel.events.collect { event ->
+            when (event) {
+                is ArchiveEvent.Error -> snackbarHostState.showSnackbar(event.message)
+                is ArchiveEvent.Unarchived ->
+                    snackbarHostState.showSnackbar("${event.succeeded} unarchived")
+            }
+        }
+    }
+
     ArchiveScreen(
         state = state,
         onBack = onBack,
@@ -34,6 +53,7 @@ fun ArchiveScreen(
         onUnarchiveSelected = viewModel::unarchiveSelected,
         imageLoader = imageLoader,
         modifier = modifier,
+        snackbarHostState = snackbarHostState,
     )
 }
 
@@ -51,6 +71,7 @@ fun ArchiveScreen(
     onUnarchiveSelected: () -> Unit = {},
     imageLoader: ImageLoader? = null,
     modifier: Modifier = Modifier,
+    snackbarHostState: SnackbarHostState = remember { SnackbarHostState() },
 ) {
     LibraryStateScreen(
         title = "Archive",
@@ -84,5 +105,6 @@ fun ArchiveScreen(
         },
         imageLoader = imageLoader,
         modifier = modifier,
+        snackbarHostState = snackbarHostState,
     )
 }

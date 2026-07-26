@@ -68,6 +68,10 @@ class MainActivity : ComponentActivity() {
                                     is TimelineEvent.Error -> snackbarHostState.showSnackbar(event.message)
                                     is TimelineEvent.Deleted ->
                                         snackbarHostState.showSnackbar("${event.count} deleted")
+                                    is TimelineEvent.Favorited ->
+                                        snackbarHostState.showSnackbar("${event.count} added to favorites")
+                                    is TimelineEvent.Archived ->
+                                        snackbarHostState.showSnackbar("${event.count} archived")
                                 }
                             }
                         }

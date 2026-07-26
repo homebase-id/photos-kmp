@@ -22,6 +22,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
@@ -84,6 +86,7 @@ fun LibraryStateScreen(
     imageLoader: ImageLoader?,
     modifier: Modifier = Modifier,
     headerContent: (@Composable () -> Unit)? = null,
+    snackbarHostState: SnackbarHostState = remember { SnackbarHostState() },
 ) {
     // System back exits selection mode before it pops the screen (parity with the timeline).
     BackHandler(enabled = inSelectionMode) { onClearSelection() }
@@ -95,6 +98,7 @@ fun LibraryStateScreen(
             if (inSelectionMode) selectionTopBar(selectedCount, onClearSelection)
             else LibraryTopBar(title = title, onBack = onBack)
         },
+        snackbarHost = { SnackbarHost(snackbarHostState) },
     ) { innerPadding ->
         // The header banner (if any) sits above the grid, so only the bottom inset flows down.
         val contentPadding = PaddingValues(bottom = innerPadding.calculateBottomPadding())

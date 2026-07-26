@@ -8,8 +8,10 @@ import androidx.compose.material.icons.outlined.Restore
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -22,10 +24,14 @@ import coil3.ImageLoader
 import id.homebase.photos.android.ui.components.DeleteConfirmDialog
 import id.homebase.photos.android.ui.components.SelectionTopBar
 import id.homebase.photos.domain.PhotoItem
+import id.homebase.photos.library.TrashEvent
 import id.homebase.photos.library.TrashUiState
 import id.homebase.photos.library.TrashViewModel
 
-/** Stateful Trash grid: renders the shared [TrashViewModel] over [LibraryStateScreen]. */
+/**
+ * Stateful Trash grid: renders the shared [TrashViewModel] over [LibraryStateScreen] and turns its
+ * one-time [TrashEvent]s into snackbars (errors + the restore/permanent-delete counts).
+ */
 @Composable
 fun TrashScreen(
     viewModel: TrashViewModel,
@@ -35,6 +41,19 @@ fun TrashScreen(
     modifier: Modifier = Modifier,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    LaunchedEffect(viewModel) {
+        viewModel.events.collect { event ->
+            when (event) {
+                is TrashEvent.Error -> snackbarHostState.showSnackbar(event.message)
+                is TrashEvent.Restored -> snackbarHostState.showSnackbar("${event.succeeded} restored")
+                is TrashEvent.PermanentlyDeleted ->
+                    snackbarHostState.showSnackbar("${event.count} deleted forever")
+            }
+        }
+    }
+
     TrashScreen(
         state = state,
         onBack = onBack,
@@ -48,6 +67,7 @@ fun TrashScreen(
         onPermanentDeleteSelected = viewModel::permanentDeleteSelected,
         imageLoader = imageLoader,
         modifier = modifier,
+        snackbarHostState = snackbarHostState,
     )
 }
 
@@ -70,6 +90,7 @@ fun TrashScreen(
     onPermanentDeleteSelected: () -> Unit = {},
     imageLoader: ImageLoader? = null,
     modifier: Modifier = Modifier,
+    snackbarHostState: SnackbarHostState = remember { SnackbarHostState() },
 ) {
     var showDeleteForeverDialog by remember { mutableStateOf(false) }
     val selectedCount = state.selectedIds.size
@@ -112,6 +133,7 @@ fun TrashScreen(
         headerContent = { TrashHeaderNote() },
         imageLoader = imageLoader,
         modifier = modifier,
+        snackbarHostState = snackbarHostState,
     )
 
     if (showDeleteForeverDialog) {
