@@ -4,6 +4,7 @@ import id.homebase.photos.data.FavoritesPage
 import id.homebase.photos.data.PhotoStatusResult
 import id.homebase.photos.data.PhotosRepository
 import id.homebase.photos.domain.PhotoItem
+import id.homebase.photos.search.SearchCriteria
 import id.homebase.photos.viewer.VideoHandle
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.Flow
@@ -117,4 +118,6 @@ internal class FakeLibraryPhotosRepository(
         val older = if (beforeUserDate == null) trashed else trashed.filter { it.userDate < beforeUserDate }
         return older.sortedByDescending { it.userDate }.take(limit)
     }
+
+    override suspend fun search(criteria: SearchCriteria): List<PhotoItem> = emptyList()
 }

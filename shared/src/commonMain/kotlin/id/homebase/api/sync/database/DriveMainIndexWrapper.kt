@@ -190,6 +190,26 @@ class DriveMainIndexWrapper(
         return result
     }
 
+    /** Batch E search (non-album branch) — same shape as [selectPhotosPage], bounded both sides. */
+    suspend fun selectPhotosInDateRangePage(
+        identityId: Uuid,
+        driveId: Uuid,
+        fileType: Long,
+        from: Long,
+        to: Long,
+        limit: Long,
+    ): List<HomebaseFile> {
+        val headers = databaseManager.readValue("selectPhotosInDateRangePage") {
+            delegate.selectPhotosInDateRangePage(identityId, driveId, fileType, from, to, limit)
+                .executeAsList()
+        }
+        val result = ArrayList<HomebaseFile>(headers.size)
+        for (json in headers) {
+            result.add(OdinSystemSerializer.deserialize<HomebaseFile>(json))
+        }
+        return result
+    }
+
     suspend fun countAll(): Long =
         databaseManager.readValue("countAll") { delegate.countAll().executeAsOne() }
 

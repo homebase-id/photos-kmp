@@ -4,6 +4,7 @@ import id.homebase.photos.data.FavoritesPage
 import id.homebase.photos.data.PhotoStatusResult
 import id.homebase.photos.data.PhotosRepository
 import id.homebase.photos.domain.PhotoItem
+import id.homebase.photos.search.SearchCriteria
 import id.homebase.photos.viewer.VideoHandle
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -77,6 +78,7 @@ class TimelineFavoriteArchiveTest {
 
         override suspend fun loadArchivedPage(beforeUserDate: Long?, limit: Int): List<PhotoItem> = emptyList()
         override suspend fun loadTrashPage(beforeUserDate: Long?, limit: Int): List<PhotoItem> = emptyList()
+        override suspend fun search(criteria: SearchCriteria): List<PhotoItem> = emptyList()
     }
 
     private fun item(userDate: Long): PhotoItem = PhotoItem(

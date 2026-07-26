@@ -31,6 +31,8 @@ import id.homebase.photos.domain.PhotoItem
 import id.homebase.photos.library.ArchiveViewModel
 import id.homebase.photos.library.FavoritesViewModel
 import id.homebase.photos.library.TrashViewModel
+import id.homebase.photos.search.RecentSearchesStore
+import id.homebase.photos.search.SearchViewModel
 import id.homebase.photos.timeline.TimelineViewModel
 import id.homebase.photos.viewer.VideoHandle
 import id.homebase.photos.viewer.ViewerViewModel
@@ -85,6 +87,11 @@ val photosModule = module {
         )
     }
     factory { AlbumsViewModel(get()) }
+
+    // Search (Batch E): recents reuse the KeyValue table (no new .sq); the VM composes
+    // date/type/album criteria over PhotosRepository + album-name matching over AlbumsRepository.
+    single { RecentSearchesStore(get<DatabaseManager>().keyValue) }
+    factory { SearchViewModel(get(), get(), get()) }
 
     // Sync engine backing YouAuthFlowManager. single because its authState-driven mount
     // must survive across the login screen and root gate (one instance, one driveStatuses).
@@ -232,3 +239,6 @@ fun archiveViewModel(): ArchiveViewModel = KoinPlatform.getKoin().get()
 
 /** iOS-callable factory: resolves the trash ViewModel from Koin (Swift has no DSL). */
 fun trashViewModel(): TrashViewModel = KoinPlatform.getKoin().get()
+
+/** iOS-callable factory: resolves the search ViewModel from Koin (Swift has no DSL). */
+fun searchViewModel(): SearchViewModel = KoinPlatform.getKoin().get()

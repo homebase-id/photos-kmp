@@ -1,6 +1,7 @@
 package id.homebase.photos.data
 
 import id.homebase.photos.domain.PhotoItem
+import id.homebase.photos.search.SearchCriteria
 import id.homebase.photos.viewer.VideoHandle
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -76,6 +77,13 @@ interface PhotosRepository {
 
     /** One page of TRASHED (binned) photos, same cursor contract as [loadArchivedPage]. */
     suspend fun loadTrashPage(beforeUserDate: Long?, limit: Int): List<PhotoItem>
+
+    /**
+     * Metadata search (Batch E): date range, type, album. Album-constrained criteria go through
+     * the server `albumQuery` per album (union, deduped by fileId); otherwise a local date-range
+     * read. Newest first, capped — see [PhotosRepositoryImpl] for the cap.
+     */
+    suspend fun search(criteria: SearchCriteria): List<PhotoItem>
 }
 
 /**

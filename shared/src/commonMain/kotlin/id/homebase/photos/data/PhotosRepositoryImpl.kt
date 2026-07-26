@@ -21,6 +21,7 @@ import id.homebase.core.image.thumbSizesFrom
 import id.homebase.photos.PhotoConfig
 import id.homebase.photos.PhotoQueries
 import id.homebase.photos.domain.PhotoItem
+import id.homebase.photos.search.SearchCriteria
 import id.homebase.photos.viewer.VideoHandle
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
@@ -141,6 +142,50 @@ class PhotosRepositoryImpl(
         return files.map(PhotoMapper::fromHomebaseFile)
     }
 
+    override suspend fun search(criteria: SearchCriteria): List<PhotoItem> {
+        val items = if (criteria.albumIds.isNotEmpty()) searchByAlbums(criteria.albumIds) else searchByDateRange(
+            from = criteria.fromUserDate,
+            to = criteria.toUserDate,
+        )
+        return items
+            .filter { criteria.isVideo == null || it.isVideo == criteria.isVideo }
+            .sortedByDescending { it.userDate }
+            .take(SEARCH_RESULT_CAP) // ponytail: unpaged 500-cap, paginate if Redmi says so
+    }
+
+    // Album membership is server-side (tags aren't indexed locally) — same query path as
+    // AlbumsRepositoryImpl, unioned across every selected album and deduped by fileId. Keeps
+    // archivalStatus [0,1,3] like the Albums screens (PhotoQueries.albumQuery's own filter).
+    private suspend fun searchByAlbums(albumIds: List<Uuid>): List<PhotoItem> {
+        val seen = LinkedHashSet<Uuid>()
+        val results = mutableListOf<PhotoItem>()
+        for (albumId in albumIds) {
+            val response = driveQueryProvider.queryBatch(driveId, PhotoQueries.albumQuery(albumId))
+            response.searchResults
+                .filterNot { it.isSoftDeleted() }
+                .map(PhotoMapper::fromHomebaseFile)
+                .forEach { if (seen.add(it.fileId)) results += it }
+        }
+        return results
+    }
+
+    private suspend fun searchByDateRange(from: Long?, to: Long?): List<PhotoItem> {
+        val identityId = activeIdentity() ?: return emptyList()
+        val files = databaseManager.driveMainIndex.selectPhotosInDateRangePage(
+            identityId = identityId,
+            driveId = driveId,
+            fileType = PhotoConfig.PHOTO_FILE_TYPE.toLong(),
+            from = from ?: Long.MIN_VALUE,
+            to = to ?: Long.MAX_VALUE,
+            limit = SEARCH_RESULT_CAP.toLong(),
+        )
+        return files
+            .asSequence()
+            .filterNot { it.isSoftDeleted() }
+            .map { PhotoMapper.fromHomebaseFile(it) }
+            .toList()
+    }
+
     override suspend fun loadThumbnailBytes(item: PhotoItem, maxDim: Int): ByteArray? {
         val file = lookupFile(item.fileId) ?: return null
         return imageLoader.loadThumbnail(imageDataFor(item, file), ImageSize(maxDim, maxDim))?.bytes
@@ -227,6 +272,7 @@ class PhotosRepositoryImpl(
 
     companion object {
         private const val TAG = "PhotosRepository"
+        private const val SEARCH_RESULT_CAP = 500
     }
 }
 

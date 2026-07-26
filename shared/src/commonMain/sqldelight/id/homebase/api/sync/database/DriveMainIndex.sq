@@ -181,6 +181,17 @@ WHERE identityId = ? AND driveId = ? AND fileType = ? AND fileState = 1
 ORDER BY userDate DESC, rowId DESC
 LIMIT ?;
 
+-- Batch E search (non-album branch): same predicate shape as selectPhotosPage, but
+-- bounded on both sides instead of an open "before" cursor. Callers pass
+-- Long.MIN_VALUE/MAX_VALUE for a missing bound.
+selectPhotosInDateRangePage:
+SELECT jsonHeader FROM DriveMainIndex
+WHERE identityId = ? AND driveId = ? AND fileType = ? AND fileState = 1
+  AND archivalStatus = 0
+  AND userDate BETWEEN :from AND :to
+ORDER BY userDate DESC, rowId DESC
+LIMIT :limit;
+
 -- Defragmenter: re-project a row's archivalStatus column when the SQL value
 -- has drifted from what the deserialised jsonHeader says (the
 -- SoftDeleteArchivalMismatch case). Local-only — peers maintain their own

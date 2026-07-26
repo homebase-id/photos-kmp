@@ -1,6 +1,7 @@
 package id.homebase.photos.data
 
 import id.homebase.photos.domain.PhotoItem
+import id.homebase.photos.search.SearchCriteria
 import id.homebase.photos.viewer.VideoHandle
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -146,6 +147,22 @@ class MockPhotosRepository(
     override suspend fun loadTrashPage(beforeUserDate: Long?, limit: Int): List<PhotoItem> {
         val older = if (beforeUserDate == null) all else all.filter { it.userDate < beforeUserDate }
         return older.filter { statusById[it.fileId] == MockStatus.TRASHED }.take(limit)
+    }
+
+    // No album membership modeled in the seeded mock — an album-constrained search is empty,
+    // same shape as the real repository's per-album server query returning nothing new.
+    override suspend fun search(criteria: SearchCriteria): List<PhotoItem> {
+        if (criteria.albumIds.isNotEmpty()) return emptyList()
+        val from = criteria.fromUserDate ?: Long.MIN_VALUE
+        val to = criteria.toUserDate ?: Long.MAX_VALUE
+        return all
+            .asSequence()
+            .filterNot { statusById.containsKey(it.fileId) } // mirrors archivalStatus=0 (not archived/trashed)
+            .filter { it.userDate in from..to }
+            .filter { criteria.isVideo == null || it.isVideo == criteria.isVideo }
+            .sortedByDescending { it.userDate }
+            .take(500)
+            .toList()
     }
 
     @OptIn(ExperimentalEncodingApi::class)
