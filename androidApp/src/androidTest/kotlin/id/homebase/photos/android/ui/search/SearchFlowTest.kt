@@ -3,6 +3,7 @@
 package id.homebase.photos.android.ui.search
 
 import androidx.activity.ComponentActivity
+import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onFirst
@@ -11,6 +12,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performImeAction
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import id.homebase.photos.albums.AlbumSummary
@@ -122,6 +124,75 @@ class SearchFlowTest {
         cells.onFirst().performClick()
 
         assertTrue(clicked != null)
+    }
+
+    @Test
+    fun isSearching_withNonEmptyResults_showsProgressWithoutHidingGrid() {
+        val items = listOf(photoItem(0))
+
+        composeRule.setContent {
+            PhotosTheme {
+                SearchScreen(
+                    state = SearchUiState(
+                        query = "june",
+                        hasSearched = true,
+                        isSearching = true, // a filter change re-ran the search over existing results
+                        sections = listOf(TimelineSection(title = "June 2026", items = items)),
+                    ),
+                    onBack = {},
+                )
+            }
+        }
+
+        composeRule.onNodeWithTag("search-progress").assertExists()
+        composeRule.onNodeWithTag("search-results-grid").assertExists()
+        composeRule.onNodeWithTag("search-skeleton").assertDoesNotExist()
+    }
+
+    @Test
+    fun error_withNonEmptyResults_showsBannerWithoutHidingGrid() {
+        val items = listOf(photoItem(0))
+
+        composeRule.setContent {
+            PhotosTheme {
+                SearchScreen(
+                    state = SearchUiState(
+                        query = "june",
+                        hasSearched = true,
+                        error = "Couldn't refresh results", // stale re-search failed
+                        sections = listOf(TimelineSection(title = "June 2026", items = items)),
+                    ),
+                    onBack = {},
+                )
+            }
+        }
+
+        composeRule.onNodeWithTag("search-error-banner").assertExists()
+        composeRule.onNodeWithText("Couldn't refresh results").assertExists()
+        composeRule.onNodeWithTag("search-results-grid").assertExists()
+        composeRule.onNodeWithTag("search-error").assertDoesNotExist() // not the full-screen state
+    }
+
+    @Test
+    fun filterRow_withLongLabels_albumChipReachableViaScroll() {
+        val longAlbum = album("Summer Vacation With All The Extended Family And Friends 2026")
+
+        composeRule.setContent {
+            PhotosTheme {
+                SearchScreen(
+                    state = SearchUiState(
+                        fromUserDate = 1_718_000_000_000L,
+                        toUserDate = 1_720_000_000_000L, // long formatted date-range label
+                        albumFilter = longAlbum,
+                    ),
+                    onBack = {},
+                )
+            }
+        }
+
+        // The row doesn't clip/hide the last chip — scrolling to it brings it fully on screen.
+        composeRule.onNodeWithTag("search-chip-album").performScrollTo()
+        composeRule.onNodeWithTag("search-chip-album").assertIsDisplayed()
     }
 
     @Test

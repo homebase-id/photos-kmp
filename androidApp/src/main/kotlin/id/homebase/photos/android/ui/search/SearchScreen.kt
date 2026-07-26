@@ -3,6 +3,7 @@
 package id.homebase.photos.android.ui.search
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -19,6 +20,7 @@ import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -35,6 +37,7 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
@@ -189,6 +192,28 @@ fun SearchScreen(
                     onTypeFilterChange = onTypeFilterChange,
                     onAlbumFilterChange = onAlbumFilterChange,
                 )
+                // A filter change re-runs the search over whatever's already on screen (see
+                // SearchViewModel) — without this, a slow/failing re-search over populated
+                // results would look identical to success. Only the empty-results case gets the
+                // full-screen Skeleton/ErrorState below.
+                if (state.isSearching && state.sections.isNotEmpty()) {
+                    LinearProgressIndicator(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("search-progress"),
+                    )
+                }
+                if (state.error != null && state.sections.isNotEmpty()) {
+                    Text(
+                        text = state.error,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 4.dp)
+                            .testTag("search-error-banner"),
+                    )
+                }
             }
         },
     ) { innerPadding ->
@@ -252,9 +277,13 @@ private fun SearchFilterRow(
     onTypeFilterChange: (TypeFilter) -> Unit,
     onAlbumFilterChange: (AlbumItem?) -> Unit,
 ) {
+    // Plain Row + horizontalScroll, not LazyRow: exactly three fixed chips, never a dynamic
+    // list — a long date-range label plus a long album name can still exceed a narrow screen
+    // (e.g. 360dp), so the row needs to scroll rather than clip the album chip off-screen.
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .horizontalScroll(rememberScrollState())
             .padding(horizontal = 16.dp, vertical = 4.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
