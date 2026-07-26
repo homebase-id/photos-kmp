@@ -122,8 +122,32 @@ class TimelineFavoriteArchiveTest {
         assertTrue(state.pagedItems.first { it.fileId == p1.fileId }.isFavorite)
         assertFalse(state.pagedItems.first { it.fileId == p2.fileId }.isFavorite)
         assertTrue(state.sections.flatMap { it.items }.first { it.fileId == p1.fileId }.isFavorite)
+        assertTrue(state.selectedIds.isEmpty())
         assertEquals(listOf(p1.fileId to true), repo.favoriteCalls)
         assertEquals(listOf<TimelineEvent>(TimelineEvent.Favorited(1)), events)
+        collector.cancel()
+    }
+
+    @Test
+    fun favoriteSelected_partialFailure_clearsSelectionAndEmitsError() = runTest(dispatcher) {
+        val repo = RecordingStatusRepository(listOf(p2, p1), favoriteResultFor = { it != p1.fileId })
+        val vm = TimelineViewModel(repo)
+        advanceUntilIdle()
+        val events = mutableListOf<TimelineEvent>()
+        val collector = launch { vm.events.collect { events += it } }
+        advanceUntilIdle()
+
+        vm.toggleSelection(p2)
+        vm.toggleSelection(p1)
+        vm.favoriteSelectedAndWait()
+        advanceUntilIdle()
+
+        val state = vm.state.value
+        assertTrue(state.pagedItems.first { it.fileId == p2.fileId }.isFavorite)
+        assertFalse(state.pagedItems.first { it.fileId == p1.fileId }.isFavorite)
+        assertTrue(state.selectedIds.isEmpty())
+        assertEquals(TimelineEvent.Favorited(1), events.first())
+        assertTrue(events.last() is TimelineEvent.Error)
         collector.cancel()
     }
 

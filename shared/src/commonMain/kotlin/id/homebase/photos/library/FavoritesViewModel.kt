@@ -4,14 +4,12 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import co.touchlab.kermit.Logger
 import id.homebase.photos.data.PhotosRepository
+import id.homebase.photos.data.setFavoriteBatch
 import id.homebase.photos.domain.PhotoItem
 import id.homebase.photos.timeline.TimelineSection
 import id.homebase.photos.timeline.appendToMonthSections
 import id.homebase.photos.timeline.groupIntoMonthSections
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -141,8 +139,9 @@ class FavoritesViewModel(
 
     /**
      * Unfavorite the selected photos, suspending until done — iOS awaits this. Drops the
-     * succeeded ones from state, clears the selection unconditionally, and reconciles with a
-     * background refresh (server is the source of truth for the favorites query).
+     * succeeded ones from state and clears the selection unconditionally — no background
+     * refresh, so a deep `loadMore` session keeps its loaded depth instead of snapping to
+     * page 1. Emits an [FavoritesEvent.Error] alongside the count on any partial failure.
      */
     suspend fun unfavoriteSelectedAndWait() {
         val current = _state.value
@@ -150,10 +149,7 @@ class FavoritesViewModel(
         val targets = current.selectedPhotos
         _state.update { it.copy(isMutating = true) }
         val succeededIds = try {
-            coroutineScope {
-                targets.map { photo -> async { photo.fileId to repository.setFavorite(photo.fileId, false) } }
-                    .awaitAll()
-            }.filter { it.second }.map { it.first }.toSet()
+            repository.setFavoriteBatch(targets.map { it.fileId }, favorite = false)
         } catch (e: CancellationException) {
             _state.update { it.copy(isMutating = false) }
             throw e
@@ -172,8 +168,9 @@ class FavoritesViewModel(
                 sections = groupIntoMonthSections(remaining),
             )
         }
-        _events.tryEmit(FavoritesEvent.Unfavorited(succeededIds.size, targets.size - succeededIds.size))
-        refresh()
+        val failed = targets.size - succeededIds.size
+        _events.tryEmit(FavoritesEvent.Unfavorited(succeededIds.size, failed))
+        if (failed > 0) emitError("Couldn't unfavorite $failed item(s)")
     }
 
     private fun emitError(message: String) {

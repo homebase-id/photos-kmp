@@ -102,8 +102,8 @@ class TrashViewModel(
 
     /**
      * Restore the selected photos out of Trash, suspending until done — iOS awaits this. Drops
-     * the succeeded ones from state, clears the selection unconditionally, and reconciles with a
-     * background refresh.
+     * the succeeded ones from state and clears the selection unconditionally — no background
+     * refresh, so a deep `loadMore` session keeps its loaded depth instead of snapping to page 1.
      */
     suspend fun restoreSelectedAndWait() {
         val current = _state.value
@@ -133,7 +133,6 @@ class TrashViewModel(
         }
         _events.tryEmit(TrashEvent.Restored(succeededIds.size, result.failed.size))
         if (result.failed.isNotEmpty()) emitError("Couldn't restore ${result.failed.size} item(s)")
-        refresh()
     }
 
     /** Fire-and-forget permanent delete of the selection (Android). */

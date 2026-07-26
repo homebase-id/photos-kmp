@@ -20,7 +20,8 @@ import kotlin.uuid.Uuid
 /**
  * Trash contract: local-paged via [id.homebase.photos.data.PhotosRepository.loadTrashPage]
  * (same cursor contract as Archive). [TrashViewModel.restoreSelectedAndWait] optimistically drops
- * succeeded items; [TrashViewModel.permanentDeleteSelectedAndWait] is all-or-nothing like
+ * succeeded items with no reload (a deep `loadMore` session keeps its loaded depth);
+ * [TrashViewModel.permanentDeleteSelectedAndWait] is all-or-nothing like
  * [id.homebase.photos.timeline.TimelineViewModel.deleteSelectedAndWait] — both share one
  * in-flight guard.
  */
@@ -64,6 +65,19 @@ class TrashViewModelTest {
         assertFalse(state.isLoading)
         assertEquals(listOf(p3, p2, p1), state.pagedItems)
         assertTrue(state.sections.isNotEmpty())
+        assertTrue(state.endReached)
+    }
+
+    @Test
+    fun init_withNoTrash_isEmptyAndEndReached() = runTest(dispatcher) {
+        val repo = FakeLibraryPhotosRepository()
+        val vm = TrashViewModel(repo)
+        advanceUntilIdle()
+
+        val state = vm.state.value
+        assertFalse(state.isLoading)
+        assertTrue(state.pagedItems.isEmpty())
+        assertTrue(state.sections.isEmpty())
         assertTrue(state.endReached)
     }
 
@@ -118,6 +132,28 @@ class TrashViewModelTest {
         assertEquals(listOf(listOf(p1.fileId)), repo.restoreCalls)
         assertEquals(listOf<TrashEvent>(TrashEvent.Restored(1, 0)), events)
         collector.cancel()
+    }
+
+    @Test
+    fun restoreSelected_afterLoadMore_keepsLoadedDepthMinusMutated() = runTest(dispatcher) {
+        // PAGE_SIZE + 5 loaded: a wrongly-triggered refresh would clip the reload back to
+        // PAGE_SIZE (the page limit), which is NOT what "depth minus one mutated item" is.
+        val fullPage = (0 until TrashViewModel.PAGE_SIZE).map { item(2_000_000_000_000L - it * 1000L) }
+        val extra = (0 until 5).map { item(1_000_000_000_000L - it * 1000L) }
+        val repo = FakeLibraryPhotosRepository(trashed = fullPage + extra)
+        val vm = TrashViewModel(repo)
+        advanceUntilIdle()
+        vm.loadMore()
+        advanceUntilIdle()
+        assertEquals(TrashViewModel.PAGE_SIZE + 5, vm.state.value.pagedItems.size)
+
+        val target = vm.state.value.pagedItems.last()
+        vm.toggleSelection(target)
+        vm.restoreSelectedAndWait()
+        advanceUntilIdle()
+
+        assertEquals(TrashViewModel.PAGE_SIZE + 4, vm.state.value.pagedItems.size)
+        assertTrue(vm.state.value.pagedItems.none { it.fileId == target.fileId })
     }
 
     @Test

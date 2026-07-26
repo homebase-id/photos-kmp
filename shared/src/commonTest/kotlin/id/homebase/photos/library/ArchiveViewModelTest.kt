@@ -20,8 +20,8 @@ import kotlin.uuid.Uuid
 /**
  * Archive contract: local-paged via [id.homebase.photos.data.PhotosRepository.loadArchivedPage]
  * (beforeUserDate, mirrors [id.homebase.photos.timeline.TimelineViewModel.loadPage]'s cursor contract),
- * and [ArchiveViewModel.unarchiveSelectedAndWait] optimistically drops succeeded items, clears
- * selection unconditionally, and reconciles with a refresh.
+ * and [ArchiveViewModel.unarchiveSelectedAndWait] optimistically drops succeeded items and clears
+ * selection unconditionally — no reload, so a deep `loadMore` session keeps its loaded depth.
  */
 class ArchiveViewModelTest {
 
@@ -64,6 +64,19 @@ class ArchiveViewModelTest {
         assertFalse(state.isLoading)
         assertEquals(listOf(p3, p2, p1), state.pagedItems)
         assertTrue(state.sections.isNotEmpty())
+        assertTrue(state.endReached)
+    }
+
+    @Test
+    fun init_withNoArchived_isEmptyAndEndReached() = runTest(dispatcher) {
+        val repo = FakeLibraryPhotosRepository()
+        val vm = ArchiveViewModel(repo)
+        advanceUntilIdle()
+
+        val state = vm.state.value
+        assertFalse(state.isLoading)
+        assertTrue(state.pagedItems.isEmpty())
+        assertTrue(state.sections.isEmpty())
         assertTrue(state.endReached)
     }
 
@@ -119,6 +132,28 @@ class ArchiveViewModelTest {
         assertEquals(listOf(listOf(p1.fileId) to false), repo.setArchivedCalls)
         assertEquals(listOf<ArchiveEvent>(ArchiveEvent.Unarchived(1, 0)), events)
         collector.cancel()
+    }
+
+    @Test
+    fun unarchiveSelected_afterLoadMore_keepsLoadedDepthMinusMutated() = runTest(dispatcher) {
+        // PAGE_SIZE + 5 loaded: a wrongly-triggered refresh would clip the reload back to
+        // PAGE_SIZE (the page limit), which is NOT what "depth minus one mutated item" is.
+        val fullPage = (0 until ArchiveViewModel.PAGE_SIZE).map { item(2_000_000_000_000L - it * 1000L) }
+        val extra = (0 until 5).map { item(1_000_000_000_000L - it * 1000L) }
+        val repo = FakeLibraryPhotosRepository(archived = fullPage + extra)
+        val vm = ArchiveViewModel(repo)
+        advanceUntilIdle()
+        vm.loadMore()
+        advanceUntilIdle()
+        assertEquals(ArchiveViewModel.PAGE_SIZE + 5, vm.state.value.pagedItems.size)
+
+        val target = vm.state.value.pagedItems.last()
+        vm.toggleSelection(target)
+        vm.unarchiveSelectedAndWait()
+        advanceUntilIdle()
+
+        assertEquals(ArchiveViewModel.PAGE_SIZE + 4, vm.state.value.pagedItems.size)
+        assertTrue(vm.state.value.pagedItems.none { it.fileId == target.fileId })
     }
 
     @Test

@@ -6,12 +6,10 @@ import co.touchlab.kermit.Logger
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.photos.data.PhotosRepository
+import id.homebase.photos.data.setFavoriteBatch
 import kotlinx.coroutines.flow.filterIsInstance
 import id.homebase.photos.domain.PhotoItem
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -171,7 +169,9 @@ class TimelineViewModel(
 
     /**
      * Favorite the selected photos, suspending until done — iOS awaits this. Flips `isFavorite`
-     * on the matching items in place (they stay in the timeline — only Archive/Trash drop items).
+     * on the matching items in place (they stay in the timeline — only Archive/Trash drop items),
+     * clears the selection on success like every other selection mutation, and emits a
+     * [TimelineEvent.Error] alongside the count on any partial failure.
      */
     suspend fun favoriteSelectedAndWait() {
         val current = _state.value
@@ -179,10 +179,7 @@ class TimelineViewModel(
         val targets = current.selectedPhotos
         _state.update { it.copy(isMutating = true) }
         val succeededIds = try {
-            coroutineScope {
-                targets.map { photo -> async { photo.fileId to repository.setFavorite(photo.fileId, true) } }
-                    .awaitAll()
-            }.filter { it.second }.map { it.first }.toSet()
+            repository.setFavoriteBatch(targets.map { it.fileId }, favorite = true)
         } catch (e: CancellationException) {
             _state.update { it.copy(isMutating = false) }
             throw e
@@ -192,20 +189,18 @@ class TimelineViewModel(
             emitError(e.message ?: "Couldn't favorite")
             return
         }
-        if (succeededIds.isEmpty()) {
-            _state.update { it.copy(isMutating = false) }
-            emitError("Couldn't favorite")
-            return
-        }
         _state.update {
             val updated = it.pagedItems.map { p -> if (p.fileId in succeededIds) p.copy(isFavorite = true) else p }
             it.copy(
                 isMutating = false,
+                selectedIds = emptySet(),
                 pagedItems = updated,
                 sections = groupIntoMonthSections(updated),
             )
         }
         _events.tryEmit(TimelineEvent.Favorited(succeededIds.size))
+        val failed = targets.size - succeededIds.size
+        if (failed > 0) emitError("Couldn't favorite $failed item(s)")
     }
 
     /** Fire-and-forget archive of the selection (Android). */

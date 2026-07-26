@@ -2,6 +2,9 @@ package id.homebase.photos.data
 
 import id.homebase.photos.domain.PhotoItem
 import id.homebase.photos.viewer.VideoHandle
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlin.uuid.Uuid
 
@@ -74,3 +77,13 @@ interface PhotosRepository {
     /** One page of TRASHED (binned) photos, same cursor contract as [loadArchivedPage]. */
     suspend fun loadTrashPage(beforeUserDate: Long?, limit: Int): List<PhotoItem>
 }
+
+/**
+ * Runs [PhotosRepository.setFavorite] concurrently over [fileIds] (the method is single-file,
+ * unlike [PhotosRepository.setArchived]/[PhotosRepository.restore]) and returns the ids that
+ * succeeded. Shared by Timeline's favoriteSelectedAndWait and Favorites' unfavoriteSelectedAndWait.
+ */
+suspend fun PhotosRepository.setFavoriteBatch(fileIds: List<Uuid>, favorite: Boolean): Set<Uuid> =
+    coroutineScope {
+        fileIds.map { id -> async { id to setFavorite(id, favorite) } }.awaitAll()
+    }.filter { it.second }.map { it.first }.toSet()

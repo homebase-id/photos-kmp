@@ -101,8 +101,8 @@ class ArchiveViewModel(
 
     /**
      * Restore the selected photos out of Archive, suspending until done — iOS awaits this. Drops
-     * the succeeded ones from state, clears the selection unconditionally, and reconciles with a
-     * background refresh.
+     * the succeeded ones from state and clears the selection unconditionally — no background
+     * refresh, so a deep `loadMore` session keeps its loaded depth instead of snapping to page 1.
      */
     suspend fun unarchiveSelectedAndWait() {
         val current = _state.value
@@ -132,7 +132,6 @@ class ArchiveViewModel(
         }
         _events.tryEmit(ArchiveEvent.Unarchived(succeededIds.size, result.failed.size))
         if (result.failed.isNotEmpty()) emitError("Couldn't unarchive ${result.failed.size} item(s)")
-        refresh()
     }
 
     /** One page, or null when the read fails — callers keep existing content on null. */

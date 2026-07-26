@@ -20,7 +20,8 @@ import kotlin.uuid.Uuid
 /**
  * Favorites contract: server-paged via [id.homebase.photos.data.PhotosRepository.loadFavoritesPage]
  * (cursor, not beforeUserDate), Timeline-parity selection, and [FavoritesViewModel.unfavoriteSelectedAndWait]
- * optimistically drops succeeded items, clears selection unconditionally, and reconciles with a refresh.
+ * optimistically drops succeeded items and clears selection unconditionally — no reload, so a deep
+ * `loadMore` session keeps its loaded depth. Partial failure emits an Error alongside the count.
  */
 class FavoritesViewModelTest {
 
@@ -38,6 +39,8 @@ class FavoritesViewModelTest {
     )
 
     // Newest first, mirroring the server's userDate DESC contract.
+    private val p5 = item(1_700_000_400_000L)
+    private val p4 = item(1_700_000_300_000L)
     private val p3 = item(1_700_000_200_000L)
     private val p2 = item(1_700_000_100_000L)
     private val p1 = item(1_700_000_000_000L)
@@ -64,6 +67,19 @@ class FavoritesViewModelTest {
         assertFalse(state.isLoading)
         assertEquals(listOf(p3, p2, p1), state.pagedItems)
         assertTrue(state.sections.isNotEmpty())
+        assertTrue(state.endReached)
+    }
+
+    @Test
+    fun init_withNoFavorites_isEmptyAndEndReached() = runTest(dispatcher) {
+        val repo = FakeLibraryPhotosRepository()
+        val vm = FavoritesViewModel(repo)
+        advanceUntilIdle()
+
+        val state = vm.state.value
+        assertFalse(state.isLoading)
+        assertTrue(state.pagedItems.isEmpty())
+        assertTrue(state.sections.isEmpty())
         assertTrue(state.endReached)
     }
 
@@ -119,6 +135,26 @@ class FavoritesViewModelTest {
     }
 
     @Test
+    fun unfavoriteSelected_afterLoadMore_keepsLoadedDepthMinusMutated() = runTest(dispatcher) {
+        // 5 items, 2-per-page: init loads [p5,p4], loadMore appends [p3,p2] (depth 4, not end).
+        val repo = FakeLibraryPhotosRepository(favorites = listOf(p5, p4, p3, p2, p1), favoritesPageSize = 2)
+        val vm = FavoritesViewModel(repo)
+        advanceUntilIdle()
+        vm.loadMore()
+        advanceUntilIdle()
+        assertEquals(listOf(p5, p4, p3, p2), vm.state.value.pagedItems)
+        assertFalse(vm.state.value.endReached)
+
+        vm.toggleSelection(p3)
+        vm.unfavoriteSelectedAndWait()
+        advanceUntilIdle()
+
+        // A wrongly-triggered refresh would collapse this back to a 2-item page-1 slice.
+        // The correct behavior keeps the loaded depth, minus only the mutated item.
+        assertEquals(listOf(p5, p4, p2), vm.state.value.pagedItems)
+    }
+
+    @Test
     fun unfavoriteSelected_partialFailure_keepsFailedItemButClearsSelection() = runTest(dispatcher) {
         val repo = FakeLibraryPhotosRepository(favorites = listOf(p2, p1), failFavoriteFor = setOf(p1.fileId))
         val vm = FavoritesViewModel(repo)
@@ -135,7 +171,8 @@ class FavoritesViewModelTest {
         val state = vm.state.value
         assertEquals(listOf(p1), state.pagedItems)
         assertTrue(state.selectedIds.isEmpty())
-        assertEquals(listOf<FavoritesEvent>(FavoritesEvent.Unfavorited(1, 1)), events)
+        assertEquals(FavoritesEvent.Unfavorited(1, 1), events.first())
+        assertTrue(events.last() is FavoritesEvent.Error)
         collector.cancel()
     }
 
