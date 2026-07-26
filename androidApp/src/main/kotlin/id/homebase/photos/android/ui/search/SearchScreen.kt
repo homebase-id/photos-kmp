@@ -203,9 +203,10 @@ fun SearchScreen(
                             .testTag("search-progress"),
                     )
                 }
-                if (state.error != null && state.sections.isNotEmpty()) {
+                val errorMessage = state.error
+                if (errorMessage != null && state.sections.isNotEmpty()) {
                     Text(
-                        text = state.error,
+                        text = errorMessage,
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.error,
                         modifier = Modifier
