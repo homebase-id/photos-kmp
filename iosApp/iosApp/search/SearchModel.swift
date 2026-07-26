@@ -15,8 +15,14 @@ final class SearchModel: ObservableObject {
     /// nil until the first shared emission — avoids constructing a SearchUiState in Swift.
     @Published private(set) var uiState: SearchUiState?
     @Published private(set) var monthSections: [TimelineMonth] = []
+    /// Transient bottom capsule for a search failure that still has stale results on screen —
+    /// `content()`'s empty-state branch already surfaces `error` when `sections` is empty, but a
+    /// re-search (e.g. flipping a filter) that fails while old results are still showing would
+    /// otherwise be silent.
+    @Published private(set) var toastMessage: String?
 
     private var observeTask: Task<Void, Never>?
+    private var toastHideTask: Task<Void, Never>?
 
     func start() {
         guard observeTask == nil else { return }
@@ -26,7 +32,22 @@ final class SearchModel: ObservableObject {
                 guard let self else { return }
                 self.uiState = s
                 self.monthSections = TimelineModel.groupDays(s.sections)
+                if let error = s.error, !s.sections.isEmpty {
+                    self.showToast(error)
+                }
             }
+        }
+    }
+
+    /// Transient bottom capsule (auto-hides after 4s; a newer message restarts the clock) —
+    /// same timing as Favorites/Archive's toast.
+    private func showToast(_ message: String) {
+        toastMessage = message
+        toastHideTask?.cancel()
+        toastHideTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 4_000_000_000)
+            guard !Task.isCancelled else { return }
+            self?.toastMessage = nil
         }
     }
 
@@ -82,5 +103,6 @@ final class SearchModel: ObservableObject {
 
     deinit {
         observeTask?.cancel()
+        toastHideTask?.cancel()
     }
 }

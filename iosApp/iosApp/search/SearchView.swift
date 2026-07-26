@@ -25,6 +25,7 @@ struct SearchView: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(PhotosColor.background(scheme).ignoresSafeArea())
+                .overlay(alignment: .bottom) { toastView }
             }
             .navigationTitle("Search")
             .navigationBarTitleDisplayMode(.inline)
@@ -50,6 +51,20 @@ struct SearchView: View {
         }
         .sheet(isPresented: $showAlbumSheet) {
             AlbumFilterSheet(selected: model.uiState?.albumFilter) { model.setAlbumFilter($0) }
+        }
+    }
+
+    // MARK: - Error toast
+
+    /// Surfaces a search failure that still has stale results on screen (a re-search that fails
+    /// while old results are showing) — the empty-state branch in `content()` already shows
+    /// `error` when there's nothing else to show, so this only fires for the non-empty case.
+    @ViewBuilder
+    private var toastView: some View {
+        if let message = model.toastMessage {
+            ToastCapsule(message: message, a11yId: "search-error-banner")
+                .padding(.bottom, PhotosMetrics.space24)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
         }
     }
 
@@ -133,7 +148,10 @@ struct SearchView: View {
         if let state = model.uiState {
             if state.isSearching {
                 SkeletonGrid(columns: columns, identifier: "search-skeleton")
-            } else if state.isIdle {
+            } else if !state.hasSearched && state.sections.isEmpty {
+                // Covers true idle AND mid-composition (query/filters edited but not yet
+                // submitted) — `isIdle` alone flips false on the first keystroke, which used to
+                // fall through to an unlabeled blank results grid until the next submit.
                 recentsView(recent: state.recent)
             } else if state.isEmpty {
                 EmptyStateView(
