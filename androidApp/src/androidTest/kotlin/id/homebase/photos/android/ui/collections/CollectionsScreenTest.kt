@@ -103,7 +103,7 @@ class CollectionsScreenTest {
     }
 
     @Test
-    fun libraryRows_renderAboveTheGrid_andReadAsNotYetAvailable() {
+    fun libraryRows_renderAboveTheGrid_favoritesArchiveTrashEnabled_utilitiesStaysSoon() {
         val state = AlbumsUiState(isLoading = false, albums = listOf(summary("Hikes")))
 
         composeRule.setContent {
@@ -115,7 +115,56 @@ class CollectionsScreenTest {
         composeRule.onNodeWithTag("collections-library-row-trash").assertExists()
         composeRule.onNodeWithTag("collections-library-row-utilities").assertExists()
         composeRule.onNodeWithText("Favorites").assertExists()
+        composeRule.onNodeWithText("Soon").assertExists() // Utilities is the only row still inert
         composeRule.onNodeWithTag("collections-grid").assertExists()
+    }
+
+    @Test
+    fun favoritesRow_click_navigatesToFavorites() {
+        val state = AlbumsUiState(isLoading = false, albums = listOf(summary("Hikes")))
+        var clicked = false
+
+        composeRule.setContent {
+            PhotosTheme {
+                CollectionsScreen(state = state, onAlbumClick = {}, onFavoritesClick = { clicked = true })
+            }
+        }
+
+        composeRule.onNodeWithTag("collections-library-row-favorites").performClick()
+
+        assertTrue(clicked)
+    }
+
+    @Test
+    fun archiveRow_click_navigatesToArchive() {
+        val state = AlbumsUiState(isLoading = false, albums = listOf(summary("Hikes")))
+        var clicked = false
+
+        composeRule.setContent {
+            PhotosTheme {
+                CollectionsScreen(state = state, onAlbumClick = {}, onArchiveClick = { clicked = true })
+            }
+        }
+
+        composeRule.onNodeWithTag("collections-library-row-archive").performClick()
+
+        assertTrue(clicked)
+    }
+
+    @Test
+    fun trashRow_click_navigatesToTrash() {
+        val state = AlbumsUiState(isLoading = false, albums = listOf(summary("Hikes")))
+        var clicked = false
+
+        composeRule.setContent {
+            PhotosTheme {
+                CollectionsScreen(state = state, onAlbumClick = {}, onTrashClick = { clicked = true })
+            }
+        }
+
+        composeRule.onNodeWithTag("collections-library-row-trash").performClick()
+
+        assertTrue(clicked)
     }
 
     @Test

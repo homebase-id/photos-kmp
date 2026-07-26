@@ -56,6 +56,9 @@ import kotlin.uuid.ExperimentalUuidApi
 fun CollectionsScreen(
     viewModel: AlbumsViewModel,
     onAlbumClick: (AlbumItem) -> Unit,
+    onFavoritesClick: () -> Unit = {},
+    onArchiveClick: () -> Unit = {},
+    onTrashClick: () -> Unit = {},
     imageLoader: ImageLoader? = null,
     modifier: Modifier = Modifier,
 ) {
@@ -64,6 +67,9 @@ fun CollectionsScreen(
     CollectionsScreen(
         state = state,
         onAlbumClick = onAlbumClick,
+        onFavoritesClick = onFavoritesClick,
+        onArchiveClick = onArchiveClick,
+        onTrashClick = onTrashClick,
         onRetry = viewModel::refresh,
         // C3: a fresh album opens straight away, the way Google Photos does.
         onCreateAlbum = { name ->
@@ -76,14 +82,17 @@ fun CollectionsScreen(
 
 /**
  * Stateless Collections hub (C1): a "Collections" top bar with a `+` create action, the library
- * section rows (Favorites / Archive / Trash / Utilities — inert until Batch D lands those screens),
- * and below them the 2-column album grid with its skeleton / empty / error branches.
- * [imageLoader] optional so UI tests render without a Coil graph.
+ * section rows (Favorites / Archive / Trash open Batch D screens; Utilities stays "Soon"), and
+ * below them the 2-column album grid with its skeleton / empty / error branches. [imageLoader]
+ * optional so UI tests render without a Coil graph.
  */
 @Composable
 fun CollectionsScreen(
     state: AlbumsUiState,
     onAlbumClick: (AlbumItem) -> Unit,
+    onFavoritesClick: () -> Unit = {},
+    onArchiveClick: () -> Unit = {},
+    onTrashClick: () -> Unit = {},
     onRetry: () -> Unit = {},
     onCreateAlbum: (String) -> Unit = {},
     imageLoader: ImageLoader? = null,
@@ -103,7 +112,11 @@ fun CollectionsScreen(
                 .fillMaxSize()
                 .padding(top = innerPadding.calculateTopPadding()),
         ) {
-            LibrarySection()
+            LibrarySection(
+                onFavoritesClick = onFavoritesClick,
+                onArchiveClick = onArchiveClick,
+                onTrashClick = onTrashClick,
+            )
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             Box(modifier = Modifier.weight(1f)) {
                 when {
@@ -179,32 +192,33 @@ fun CollectionsScreen(
 }
 
 /**
- * The library destinations above the album grid. Batch D owns Favorites / Archive / Trash /
- * Utilities, so they render dimmed with a "Soon" note rather than as dead buttons.
+ * The library destinations above the album grid. Favorites / Archive / Trash open their Batch D
+ * screens; Utilities has none yet, so it stays dimmed with a "Soon" note rather than a dead button.
  */
 @Composable
-private fun LibrarySection() {
+private fun LibrarySection(
+    onFavoritesClick: () -> Unit,
+    onArchiveClick: () -> Unit,
+    onTrashClick: () -> Unit,
+) {
     Column {
         LibraryRow(
             icon = Icons.Outlined.FavoriteBorder,
             label = "Favorites",
             testTag = "collections-library-row-favorites",
-            enabled = false,
-            trailingLabel = SOON,
+            onClick = onFavoritesClick,
         )
         LibraryRow(
             icon = Icons.Outlined.Archive,
             label = "Archive",
             testTag = "collections-library-row-archive",
-            enabled = false,
-            trailingLabel = SOON,
+            onClick = onArchiveClick,
         )
         LibraryRow(
             icon = Icons.Outlined.Delete,
             label = "Trash",
             testTag = "collections-library-row-trash",
-            enabled = false,
-            trailingLabel = SOON,
+            onClick = onTrashClick,
         )
         LibraryRow(
             icon = Icons.Outlined.Build,

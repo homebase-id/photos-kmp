@@ -18,6 +18,8 @@ import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Archive
+import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.PhotoAlbum
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -93,6 +95,8 @@ fun TimelineScreen(
         onToggleSelection = viewModel::toggleSelection,
         onClearSelection = viewModel::clearSelection,
         onDeleteSelected = viewModel::deleteSelected,
+        onFavoriteSelected = viewModel::favoriteSelected,
+        onArchiveSelected = viewModel::archiveSelected,
         imageLoader = imageLoader,
         modifier = modifier,
     )
@@ -117,6 +121,8 @@ fun TimelineScreen(
     onToggleSelection: (PhotoItem) -> Unit = {},
     onClearSelection: () -> Unit = {},
     onDeleteSelected: () -> Unit = {},
+    onFavoriteSelected: () -> Unit = {},
+    onArchiveSelected: () -> Unit = {},
     onAddToAlbum: (() -> Unit)? = null,
     imageLoader: ImageLoader? = null,
     snackbarHostState: SnackbarHostState = remember { SnackbarHostState() },
@@ -151,6 +157,19 @@ fun TimelineScreen(
                                     contentDescription = "Add to album",
                                 )
                             }
+                        }
+                        // Batch D: favorite/archive selected — archive has no overflow to live in yet.
+                        IconButton(
+                            onClick = onFavoriteSelected,
+                            modifier = Modifier.testTag("selection-favorite"),
+                        ) {
+                            Icon(imageVector = Icons.Outlined.FavoriteBorder, contentDescription = "Favorite")
+                        }
+                        IconButton(
+                            onClick = onArchiveSelected,
+                            modifier = Modifier.testTag("selection-archive"),
+                        ) {
+                            Icon(imageVector = Icons.Outlined.Archive, contentDescription = "Archive")
                         }
                     },
                 )

@@ -19,6 +19,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -126,6 +127,9 @@ fun PhotoGridCell(
             if (photo.isVideo) {
                 VideoBadge(modifier = Modifier.align(Alignment.TopEnd))
             }
+            if (photo.isFavorite) {
+                FavoriteBadge(modifier = Modifier.align(Alignment.BottomStart))
+            }
         }
         if (selected) {
             SelectionCheckBadge(modifier = Modifier.align(Alignment.TopStart))
@@ -163,6 +167,26 @@ private fun VideoBadge(modifier: Modifier = Modifier) {
     ) {
         Icon(
             imageVector = Icons.Filled.PlayArrow,
+            contentDescription = null,
+            tint = PhotosTheme.extended.onOverlay,
+            modifier = Modifier.size(16.dp),
+        )
+    }
+}
+
+/** Small filled heart bottom-left when the photo is favorited (Batch D) — mirrors [VideoBadge]. */
+@Composable
+private fun FavoriteBadge(modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier
+            .background(
+                Brush.verticalGradient(listOf(Color.Transparent, PhotosTheme.extended.overlayChrome)),
+            )
+            .padding(4.dp)
+            .testTag("timeline-favorite-badge"),
+    ) {
+        Icon(
+            imageVector = Icons.Filled.Favorite,
             contentDescription = null,
             tint = PhotosTheme.extended.onOverlay,
             modifier = Modifier.size(16.dp),

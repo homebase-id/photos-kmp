@@ -26,7 +26,9 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.PhotoAlbum
 import androidx.compose.material.icons.outlined.Share
@@ -204,6 +206,8 @@ fun ViewerScreen(
             ViewerChrome(
                 dateLabel = current?.let { formatDate(it.userDate) }.orEmpty(),
                 onBack = ::dismiss,
+                isFavorite = state.isFavorite,
+                onToggleFavorite = viewModel::toggleFavoriteCurrent,
                 onShare = {
                     current?.let { photo ->
                         scope.launch {
@@ -306,6 +310,8 @@ private fun ViewerPage(
 private fun ViewerChrome(
     dateLabel: String,
     onBack: () -> Unit,
+    isFavorite: Boolean,
+    onToggleFavorite: () -> Unit,
     onShare: () -> Unit,
     onDelete: () -> Unit,
     onInfo: () -> Unit,
@@ -360,8 +366,14 @@ private fun ViewerChrome(
             horizontalArrangement = Arrangement.SpaceEvenly,
             verticalAlignment = Alignment.Bottom,
         ) {
-            // NO favorite — deferred to Batch D; don't ship dead buttons. Add-to-album only
-            // appears when a host wired it (C3).
+            // Favorite first (Google-Photos order), heart outline/filled per isFavorite. Add-to-album
+            // only appears when a host wired it (C3).
+            ViewerAction(
+                icon = if (isFavorite) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
+                label = if (isFavorite) "Remove from favorites" else "Add to favorites",
+                tag = "favorite-toggle",
+                onClick = onToggleFavorite,
+            )
             ViewerAction(Icons.Outlined.Share, "Share", "viewer-share", onShare)
             onAddToAlbum?.let { add ->
                 ViewerAction(Icons.Outlined.PhotoAlbum, "Add", "viewer-addto", add)

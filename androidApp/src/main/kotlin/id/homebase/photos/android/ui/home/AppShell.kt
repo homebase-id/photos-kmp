@@ -42,12 +42,18 @@ import id.homebase.photos.android.ui.components.AlbumPickerSheet
 import id.homebase.photos.android.ui.components.FloatingNavBar
 import id.homebase.photos.android.ui.components.NameInputDialog
 import id.homebase.photos.android.ui.create.CreateSheet
+import id.homebase.photos.android.ui.library.ArchiveScreen
+import id.homebase.photos.android.ui.library.FavoritesScreen
+import id.homebase.photos.android.ui.library.TrashScreen
 import id.homebase.photos.android.ui.nav.Route
 import id.homebase.photos.android.ui.search.SearchScreen
 import id.homebase.photos.android.ui.timeline.TimelineScreen
 import id.homebase.photos.android.ui.viewer.ViewerScreen
+import id.homebase.photos.archiveViewModel
 import id.homebase.photos.domain.PhotoItem
+import id.homebase.photos.favoritesViewModel
 import id.homebase.photos.timeline.TimelineViewModel
+import id.homebase.photos.trashViewModel
 import kotlinx.coroutines.launch
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
@@ -163,6 +169,8 @@ fun AppShell(
                     onToggleSelection = timelineViewModel::toggleSelection,
                     onClearSelection = timelineViewModel::clearSelection,
                     onDeleteSelected = timelineViewModel::deleteSelected,
+                    onFavoriteSelected = timelineViewModel::favoriteSelected,
+                    onArchiveSelected = timelineViewModel::archiveSelected,
                     onAddToAlbum = {
                         addRequest = AddToAlbumRequest(
                             fileIds = timelineState.selectedPhotos.map { it.fileId },
@@ -178,6 +186,63 @@ fun AppShell(
                 CollectionsScreen(
                     viewModel = albumsVm,
                     onAlbumClick = { openAlbum(it.albumId) },
+                    onFavoritesClick = { navController.navigate(Route.Favorites.path) },
+                    onArchiveClick = { navController.navigate(Route.Archive.path) },
+                    onTrashClick = { navController.navigate(Route.Trash.path) },
+                    imageLoader = imageLoader,
+                )
+            }
+
+            composable(Route.Favorites.path) {
+                val favoritesVm = remember { favoritesViewModel() }
+                FavoritesScreen(
+                    viewModel = favoritesVm,
+                    onBack = { navController.popBackStack() },
+                    onPhotoClick = { photo ->
+                        val items = favoritesVm.state.value.pagedItems
+                        val idx = items.indexOfFirst { it.fileId == photo.fileId }
+                        if (idx >= 0) {
+                            viewerBridge.items = items
+                            viewerBridge.onClosed = { deletedAny -> if (deletedAny) favoritesVm.refresh() }
+                            navController.navigate(Route.Viewer.path(idx))
+                        }
+                    },
+                    imageLoader = imageLoader,
+                )
+            }
+
+            composable(Route.Archive.path) {
+                val archiveVm = remember { archiveViewModel() }
+                ArchiveScreen(
+                    viewModel = archiveVm,
+                    onBack = { navController.popBackStack() },
+                    onPhotoClick = { photo ->
+                        val items = archiveVm.state.value.pagedItems
+                        val idx = items.indexOfFirst { it.fileId == photo.fileId }
+                        if (idx >= 0) {
+                            viewerBridge.items = items
+                            viewerBridge.onClosed = { deletedAny -> if (deletedAny) archiveVm.refresh() }
+                            navController.navigate(Route.Viewer.path(idx))
+                        }
+                    },
+                    imageLoader = imageLoader,
+                )
+            }
+
+            composable(Route.Trash.path) {
+                val trashVm = remember { trashViewModel() }
+                TrashScreen(
+                    viewModel = trashVm,
+                    onBack = { navController.popBackStack() },
+                    onPhotoClick = { photo ->
+                        val items = trashVm.state.value.pagedItems
+                        val idx = items.indexOfFirst { it.fileId == photo.fileId }
+                        if (idx >= 0) {
+                            viewerBridge.items = items
+                            viewerBridge.onClosed = { deletedAny -> if (deletedAny) trashVm.refresh() }
+                            navController.navigate(Route.Viewer.path(idx))
+                        }
+                    },
                     imageLoader = imageLoader,
                 )
             }
