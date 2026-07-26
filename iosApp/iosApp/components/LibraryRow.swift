@@ -3,30 +3,36 @@ import SwiftUI
 /// The Collections hub's library shortcuts (C1): Favorites · Archive · Trash · Utilities, grouped
 /// into one rounded card above the album grid — the Google Photos "Library" block.
 ///
-/// Batch D owns the destinations, so every row ships disabled with a "Soon" chip. They stay in
-/// the accessibility tree (disabled, not hidden) so the ids are testable now and the rows only
-/// need an `action` + `enabled: true` when D lands.
+/// Batch D wires the first three rows to `Router.push`; Utilities has no screen yet and stays
+/// disabled with its "Soon" chip.
 struct LibrarySection: View {
     @Environment(\.colorScheme) private var scheme
+    @EnvironmentObject private var router: Router
 
     var body: some View {
         VStack(spacing: 0) {
             LibraryRow(
                 title: "Favorites",
                 systemImage: "heart",
-                identifier: "collections-library-row-favorites"
+                identifier: "collections-library-row-favorites",
+                enabled: true,
+                action: { router.push(.favorites) }
             )
             rowDivider
             LibraryRow(
                 title: "Archive",
                 systemImage: "archivebox",
-                identifier: "collections-library-row-archive"
+                identifier: "collections-library-row-archive",
+                enabled: true,
+                action: { router.push(.archive) }
             )
             rowDivider
             LibraryRow(
                 title: "Trash",
                 systemImage: "trash",
-                identifier: "collections-library-row-trash"
+                identifier: "collections-library-row-trash",
+                enabled: true,
+                action: { router.push(.trash) }
             )
             rowDivider
             LibraryRow(

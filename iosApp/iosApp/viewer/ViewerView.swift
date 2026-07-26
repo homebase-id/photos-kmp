@@ -6,8 +6,9 @@ import Shared
 /// driven by the shared `ViewerViewModel` (Batch B). Each still page loads progressively
 /// (cached 300 grid tier → sharp 1200 tier crossfade) and supports pinch/double-tap zoom;
 /// video pages play through the shared decrypt-to-temp pipeline. A single tap toggles chrome
-/// (top: close + date; bottom: Share · Delete · Info glass bar); chrome auto-hides after 3s
-/// on stills. A downward drag past the threshold dismisses (disabled while zoomed).
+/// (top: close + date; bottom: Favorite · Share · Add · Delete · Info glass bar); chrome
+/// auto-hides after 3s on stills. A downward drag past the threshold dismisses (disabled while
+/// zoomed).
 struct ViewerView: View {
     @Environment(\.colorScheme) private var scheme
 
@@ -167,10 +168,16 @@ struct ViewerView: View {
         }
     }
 
-    /// Share · Add · Delete · Info on one Liquid Glass capsule over the scrim.
-    /// favorite deliberately absent — Batch D.
+    /// Favorite · Share · Add · Delete · Info on one Liquid Glass capsule over the scrim.
     private var bottomBar: some View {
         HStack(spacing: 0) {
+            actionButton(
+                model.isFavorite ? "heart.fill" : "heart",
+                label: "Favorite",
+                id: "favorite-toggle"
+            ) {
+                Task { await model.toggleFavorite() }
+            }
             actionButton("square.and.arrow.up", label: "Share", id: "viewer-share") {
                 Task { await share() }
             }

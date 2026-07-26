@@ -14,6 +14,8 @@ final class ViewerModel: ObservableObject {
     @Published private(set) var index: Int
     @Published private(set) var isDeleting = false
     @Published private(set) var deletedAny = false
+    /// Derived from the current item — no separate published field to keep out of sync on swipe.
+    var isFavorite: Bool { currentItem?.isFavorite ?? false }
     /// Transient error banner (auto-hides), fed by ViewerEventError.
     @Published private(set) var errorMessage: String?
 
@@ -72,6 +74,12 @@ final class ViewerModel: ObservableObject {
 
     func deleteCurrent() async {
         try? await vm.deleteCurrentAndWait()
+    }
+
+    /// Flip favorite on the current item — the shared VM is optimistic, so `items` (and thus
+    /// `isFavorite`) flips as soon as the state emission lands.
+    func toggleFavorite() async {
+        try? await vm.toggleFavoriteCurrentAndWait()
     }
 
     /// The single close path (close button, swipe-down, Closed event): ping the hosts if

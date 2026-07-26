@@ -45,6 +45,9 @@ enum HomeTab: Hashable {
 /// Pushable destinations. Grows as later screens (search results, settings) land.
 enum Route: Hashable {
     case albumDetail(AlbumItem)
+    case favorites
+    case archive
+    case trash
 }
 
 /// The data a fullscreen viewer needs, carried through router state instead of per-view booleans.

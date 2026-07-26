@@ -46,6 +46,12 @@ struct CollectionsView: View {
                     switch route {
                     case .albumDetail(let album):
                         AlbumDetailView(album: album)
+                    case .favorites:
+                        FavoritesView()
+                    case .archive:
+                        ArchiveView()
+                    case .trash:
+                        TrashView()
                     }
                 }
         }

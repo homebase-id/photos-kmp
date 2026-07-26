@@ -78,6 +78,8 @@ struct TimelineView: View {
                         count: selectedCount,
                         onClose: { model.vm.clearSelection() },
                         onAddToAlbum: { showAddToAlbum = true },
+                        onFavorite: { Task { try? await model.vm.favoriteSelectedAndWait() } },
+                        onArchive: { Task { try? await model.vm.archiveSelectedAndWait() } },
                         onDelete: { showDeleteDialog = true }
                     )
                 }

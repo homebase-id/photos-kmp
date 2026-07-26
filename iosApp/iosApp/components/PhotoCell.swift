@@ -58,6 +58,9 @@ struct PhotoCell: View {
                     if item.isVideo {
                         VideoBadge()
                     }
+                    if item.isFavorite {
+                        FavoriteBadge()
+                    }
                 }
                 .padding(selected ? 6 : 0)
                 .clipShape(RoundedRectangle(cornerRadius: selected ? 8 : 0))
@@ -143,6 +146,33 @@ struct VideoBadge: View {
                 )
             )
             Spacer()
+        }
+        .allowsHitTesting(false)
+    }
+}
+
+/// Small heart badge bottom-trailing when the photo is favorited (Batch D) — the opposite corner
+/// from `VideoBadge` so a favorited video shows both without overlap.
+struct FavoriteBadge: View {
+    @Environment(\.colorScheme) private var scheme
+
+    var body: some View {
+        VStack {
+            Spacer()
+            HStack {
+                Spacer()
+                Image(systemName: "heart.fill")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundColor(PhotosColor.onOverlay(scheme))
+                    .padding(PhotosMetrics.space4)
+            }
+            .background(
+                LinearGradient(
+                    colors: [PhotosColor.overlayChrome(scheme), .clear],
+                    startPoint: .bottom,
+                    endPoint: .top
+                )
+            )
         }
         .allowsHitTesting(false)
     }
