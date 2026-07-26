@@ -51,19 +51,29 @@ struct DateRangeSheet: View {
 
     // MARK: - UTC day-boundary millis
 
+    // Matches Android's DateRangePicker, which reports the day in UTC directly.
+    private static let endOfDayOffsetMs: Int64 = 24 * 60 * 60 * 1000 - 1 // 23:59:59.999
+
     private static let utcCalendar: Calendar = {
         var c = Calendar(identifier: .gregorian)
         c.timeZone = TimeZone(identifier: "UTC")!
         return c
     }()
 
+    /// `DatePicker` returns a `Date` for the calendar day the user picked, interpreted in the
+    /// device's local timezone — reading that instant back with a UTC calendar can land on the
+    /// wrong day for any non-UTC user (e.g. IST). Pull the year/month/day the user actually
+    /// picked (local calendar) and rebuild UTC midnight from those same components instead.
+    private static func utcMidnight(of date: Date) -> Date {
+        let comps = Calendar.current.dateComponents([.year, .month, .day], from: date)
+        return utcCalendar.date(from: comps) ?? date
+    }
+
     private static func startOfDayMillis(_ date: Date) -> Int64 {
-        Int64(utcCalendar.startOfDay(for: date).timeIntervalSince1970 * 1000)
+        Int64(utcMidnight(of: date).timeIntervalSince1970 * 1000)
     }
 
     private static func endOfDayMillis(_ date: Date) -> Int64 {
-        let start = utcCalendar.startOfDay(for: date)
-        let end = utcCalendar.date(byAdding: DateComponents(day: 1, second: -1), to: start) ?? date
-        return Int64(end.timeIntervalSince1970 * 1000)
+        Int64(utcMidnight(of: date).timeIntervalSince1970 * 1000) + endOfDayOffsetMs
     }
 }

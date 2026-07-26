@@ -111,7 +111,7 @@ struct SearchView: View {
                 Button("Clear") { model.clearFilters() }
                     .font(PhotosFont.label)
                     .foregroundColor(PhotosColor.primary(scheme))
-                    .accessibilityIdentifier("search-clear-filters")
+                    .accessibilityIdentifier("search-clear")
             }
         }
         .padding(.horizontal, PhotosMetrics.space16)
@@ -146,21 +146,35 @@ struct SearchView: View {
     @ViewBuilder
     private func content(columns: Int) -> some View {
         if let state = model.uiState {
-            if state.isSearching {
+            if state.isSearching && state.sections.isEmpty {
                 SkeletonGrid(columns: columns, identifier: "search-skeleton")
-            } else if !state.hasSearched && state.sections.isEmpty {
+            } else if let error = state.error, state.sections.isEmpty {
+                // Full-screen failure — distinct id from the plain no-results empty state below,
+                // matching Android's separate `search-error`/`search-empty` test tags.
+                EmptyStateView(title: "Search failed", message: error, identifier: "search-error")
+            } else if !state.hasSearched && !state.isSearching && state.sections.isEmpty {
                 // Covers true idle AND mid-composition (query/filters edited but not yet
                 // submitted) — `isIdle` alone flips false on the first keystroke, which used to
                 // fall through to an unlabeled blank results grid until the next submit.
                 recentsView(recent: state.recent)
             } else if state.isEmpty {
                 EmptyStateView(
-                    title: state.error == nil ? "No results" : "Search failed",
-                    message: state.error ?? "Try a different date range, type, or album.",
+                    title: "No results",
+                    message: "Try a different date range, type, or album.",
                     identifier: "search-empty"
                 )
             } else {
-                resultsGrid(columns: columns)
+                // A filter/submit re-search over already-populated results keeps the grid on
+                // screen with a thin progress affordance instead of dropping to a full skeleton
+                // (mirrors Android's LinearProgressIndicator over `state.sections.isNotEmpty()`).
+                VStack(spacing: 0) {
+                    if state.isSearching {
+                        ProgressView()
+                            .progressViewStyle(.linear)
+                            .accessibilityIdentifier("search-progress")
+                    }
+                    resultsGrid(columns: columns)
+                }
             }
         } else {
             SkeletonGrid(columns: columns, identifier: "search-skeleton")
