@@ -76,4 +76,55 @@ class MockPhotosRepositoryTest {
         assertTrue(repo.loadTrashPage(null, 10).none { it.fileId == target.fileId })
         assertTrue(repo.loadPage(null, 10).none { it.fileId == target.fileId })
     }
+
+    @Test
+    fun trashThenArchive_isExclusive_leavesTheBinAndEntersTheArchiveOnly() = runTest {
+        // Real backend: archivalStatus is ONE field — archiving a trashed photo must move it OUT
+        // of the bin, not leave it in both places at once.
+        val repo = MockPhotosRepository(seedCount = 5)
+        val target = repo.loadPage(null, 5).first()
+        repo.softDelete(listOf(target.fileId))
+
+        repo.setArchived(listOf(target.fileId), archived = true)
+
+        assertEquals(listOf(target.fileId), repo.loadArchivedPage(null, 10).map { it.fileId })
+        assertTrue(repo.loadTrashPage(null, 10).none { it.fileId == target.fileId }, "no longer in the bin")
+    }
+
+    @Test
+    fun archiveThenTrash_isExclusive_leavesTheArchiveAndEntersTheBinOnly() = runTest {
+        val repo = MockPhotosRepository(seedCount = 5)
+        val target = repo.loadPage(null, 5).first()
+        repo.setArchived(listOf(target.fileId), archived = true)
+
+        repo.softDelete(listOf(target.fileId))
+
+        assertEquals(listOf(target.fileId), repo.loadTrashPage(null, 10).map { it.fileId })
+        assertTrue(repo.loadArchivedPage(null, 10).none { it.fileId == target.fileId }, "no longer archived")
+    }
+
+    @Test
+    fun favoriteThenTrash_dropsOutOfLoadFavoritesPage() = runTest {
+        // Real favoritesQuery uses archivalStatus=[0,1,3] — the bin (2) is excluded even for favorites.
+        val repo = MockPhotosRepository(seedCount = 5)
+        val target = repo.loadPage(null, 5).first()
+        repo.setFavorite(target.fileId, favorite = true)
+        assertEquals(listOf(target.fileId), repo.loadFavoritesPage(null, 10).items.map { it.fileId })
+
+        repo.softDelete(listOf(target.fileId))
+
+        assertTrue(repo.loadFavoritesPage(null, 10).items.none { it.fileId == target.fileId })
+    }
+
+    @Test
+    fun favoriteThenArchive_staysInLoadFavoritesPage() = runTest {
+        // Archived (1) is still in the favoritesQuery's archivalStatus=[0,1,3] set.
+        val repo = MockPhotosRepository(seedCount = 5)
+        val target = repo.loadPage(null, 5).first()
+        repo.setFavorite(target.fileId, favorite = true)
+
+        repo.setArchived(listOf(target.fileId), archived = true)
+
+        assertEquals(listOf(target.fileId), repo.loadFavoritesPage(null, 10).items.map { it.fileId })
+    }
 }

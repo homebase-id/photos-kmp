@@ -32,7 +32,9 @@ internal class PhotoStatusWriter(
             send = { existing ->
                 val tags = existing.fileMetadata.appData.tags
                 val isFavorite = tags?.contains(PhotoConfig.FAVORITE_TAG) == true
-                if (isFavorite != favorite) { // already in the desired state → skip the patch entirely
+                // Not already in the desired state — patch. (If it already is, fall through and
+                // send nothing: the idempotent no-write skip.)
+                if (isFavorite != favorite) {
                     val newTags = if (favorite) {
                         AlbumWriteSchema.withTag(tags, PhotoConfig.FAVORITE_TAG)
                     } else {
@@ -59,7 +61,9 @@ internal class PhotoStatusWriter(
                 fetch = { drive.getFileHeader(driveId, it) },
                 send = { existing ->
                     val current = existing.fileMetadata.appData.archivalStatus ?: ArchivalStatus.None
-                    if (current != status) { // already at the target status → skip the patch entirely
+                    // Not already at the target status — patch. (If it already is, fall through and
+                    // send nothing: the idempotent no-write skip.)
+                    if (current != status) {
                         val appData = AlbumWriteSchema.carryOverAppData(
                             existing.fileMetadata.appData,
                             archivalStatus = status,
