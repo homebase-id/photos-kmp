@@ -52,6 +52,7 @@ import id.homebase.photos.android.ui.viewer.ViewerScreen
 import id.homebase.photos.archiveViewModel
 import id.homebase.photos.domain.PhotoItem
 import id.homebase.photos.favoritesViewModel
+import id.homebase.photos.searchViewModel
 import id.homebase.photos.timeline.TimelineViewModel
 import id.homebase.photos.trashViewModel
 import kotlinx.coroutines.launch
@@ -304,7 +305,24 @@ fun AppShell(
             }
 
             composable(Route.Search.path) {
-                SearchScreen(onBack = { navController.popBackStack() })
+                val searchVm = remember { searchViewModel() }
+                SearchScreen(
+                    viewModel = searchVm,
+                    // Reuses the shell's already-loaded albums state (Collections/add-to-album
+                    // share it) so opening Search doesn't trigger a second album load.
+                    albums = albumsState.albums,
+                    onBack = { navController.popBackStack() },
+                    onPhotoClick = { photo ->
+                        val items = searchVm.state.value.sections.flatMap { it.items }
+                        val idx = items.indexOfFirst { it.fileId == photo.fileId }
+                        if (idx >= 0) {
+                            viewerBridge.items = items
+                            viewerBridge.onClosed = { deletedAny -> if (deletedAny) searchVm.submit() }
+                            navController.navigate(Route.Viewer.path(idx))
+                        }
+                    },
+                    imageLoader = imageLoader,
+                )
             }
         }
 

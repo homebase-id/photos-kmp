@@ -11,7 +11,6 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
-import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -22,14 +21,16 @@ import id.homebase.photos.android.ui.components.FloatingNavBar
 import id.homebase.photos.android.ui.nav.Route
 import id.homebase.photos.android.ui.search.SearchScreen
 import id.homebase.photos.android.ui.theme.PhotosTheme
+import id.homebase.photos.search.SearchUiState
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 
 /**
  * Compose UI flow-test for the new floating shell over a real [NavHost]. Wires the actual
- * [FloatingNavBar] + [SearchScreen] with stub feed content (the real feeds need the Koin graph) and
- * asserts the shell's destinations render, feed switching swaps content, and Search opens its placeholder.
+ * [FloatingNavBar] + the stateless [SearchScreen] (fixed idle state — no Koin graph) with stub feed
+ * content (the real feeds need the Koin graph) and asserts the shell's destinations render, feed
+ * switching swaps content, and Search opens the real screen.
  */
 @RunWith(AndroidJUnit4::class)
 class AppShellNavTest {
@@ -51,7 +52,9 @@ class AppShellNavTest {
                         composable(Route.Collections.path) {
                             Text("CollectionsContent", Modifier.testTag("content-collections"))
                         }
-                        composable(Route.Search.path) { SearchScreen(onBack = {}) }
+                        composable(Route.Search.path) {
+                            SearchScreen(state = SearchUiState(), onBack = {})
+                        }
                     }
                     FloatingNavBar(
                         currentRoute = route,
@@ -88,12 +91,13 @@ class AppShellNavTest {
     }
 
     @Test
-    fun tappingSearch_opensSearchPlaceholder() {
+    fun tappingSearch_opensSearchScreen() {
         setShell()
 
         composeRule.onNodeWithTag("search-button").performClick()
 
         composeRule.onNodeWithTag("search-screen").assertExists()
-        composeRule.onNodeWithText("Search is coming soon").assertExists()
+        composeRule.onNodeWithTag("search-field").assertExists()
+        composeRule.onNodeWithTag("search-recent").assertExists()
     }
 }
