@@ -53,6 +53,7 @@ final class BackupModel: ObservableObject {
                 self.permissionDenied = false
                 self.vm.onToggle(enabled: true)
                 self.vm.loadFolders() // first grant: folders() was empty pre-auth — refresh now
+                PhotoLibraryObserver.installIfAuthorized() // first grant happens here, not at launch
             } else {
                 self.permissionDenied = true
             }

@@ -87,14 +87,18 @@ fun BackupScreen(
         }
     }
 
+    // Continuation for a picker-open request that had to detour through the permission prompt.
+    var pendingPickerOpen by remember { mutableStateOf<(() -> Unit)?>(null) }
     val foldersLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted ->
         if (granted) {
             viewModel.loadFolders()
+            pendingPickerOpen?.invoke()
         } else {
             scope.launch { snackbarHostState.showSnackbar("Allow photo access to choose folders.") }
         }
+        pendingPickerOpen = null
     }
 
     BackupScreen(
@@ -124,10 +128,12 @@ fun BackupScreen(
             viewModel.onBackupNow()
             BackupScheduler.backupNow(context)
         },
-        onChooseFolders = {
+        onChooseFolders = { onReady ->
             if (context.checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED) {
                 viewModel.loadFolders()
+                onReady()
             } else {
+                pendingPickerOpen = onReady
                 foldersLauncher.launch(permission)
             }
         },
@@ -157,17 +163,17 @@ fun BackupScreen(
     onBack: () -> Unit,
     onToggle: (Boolean) -> Unit = {},
     onBackupNow: () -> Unit = {},
-    onChooseFolders: () -> Unit = {},
+    onChooseFolders: (onReady: () -> Unit) -> Unit = { it() },
     onFolderToggled: (String) -> Unit = {},
     snackbarHostState: SnackbarHostState = remember { SnackbarHostState() },
     modifier: Modifier = Modifier,
 ) {
     var pickerOpen by remember { mutableStateOf(false) }
 
-    // Open the picker: surface the sheet and (permission-gated, in the wrapper) load the folders.
+    // Open the picker: the wrapper loads folders (permission-gated) and only then surfaces the
+    // sheet — a denied prompt must not leave an empty sheet over the explanatory snackbar.
     fun openPicker() {
-        pickerOpen = true
-        onChooseFolders()
+        onChooseFolders { pickerOpen = true }
     }
 
     Scaffold(

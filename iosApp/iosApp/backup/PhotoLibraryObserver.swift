@@ -8,22 +8,31 @@ import Photos
 final class PhotoLibraryObserver: NSObject, PHPhotoLibraryChangeObserver {
     static let shared = PhotoLibraryObserver()
 
+    private static var installed = false
     private var debounce: Task<Void, Never>?
 
-    /// Install from `iOSApp.init()` after `BackgroundBackupTrigger.register()`. Gated on access
-    /// already granted — registering unauthorized would surface the permission prompt at launch.
+    /// Install from `iOSApp.init()` after `BackgroundBackupTrigger.register()`, and again from
+    /// `BackupModel.onToggle` once access is first granted mid-session. Gated on access already
+    /// granted — registering unauthorized would surface the permission prompt at launch. All
+    /// mutable state (installed flag, debounce) is confined to the main queue.
     static func installIfAuthorized() {
-        let status = PHPhotoLibrary.authorizationStatus(for: .readWrite)
-        guard status == .authorized || status == .limited else { return }
-        PHPhotoLibrary.shared().register(shared)
+        DispatchQueue.main.async {
+            let status = PHPhotoLibrary.authorizationStatus(for: .readWrite)
+            guard !installed, status == .authorized || status == .limited else { return }
+            installed = true
+            PHPhotoLibrary.shared().register(shared)
+        }
     }
 
     func photoLibraryDidChange(_ changeInstance: PHChange) {
-        debounce?.cancel()
-        debounce = Task {
-            try? await Task.sleep(for: .seconds(5))
-            guard !Task.isCancelled else { return }
-            BackgroundBackupTrigger.schedule(after: 60)
+        // Photos delivers this on a background queue — hop to main before touching `debounce`.
+        DispatchQueue.main.async { [self] in
+            debounce?.cancel()
+            debounce = Task {
+                try? await Task.sleep(for: .seconds(5))
+                guard !Task.isCancelled else { return }
+                BackgroundBackupTrigger.schedule(after: 60)
+            }
         }
     }
 }
