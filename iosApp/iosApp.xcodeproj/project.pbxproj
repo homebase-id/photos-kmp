@@ -18,6 +18,11 @@
 		19E416128EA2DF4DF6766D24 /* BackupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 41D4BE707FCC5D054D20D0E7 /* BackupView.swift */; };
 		22EA1CB33A17DCC6FC82406D /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = F543015C899423D4B01CEB2E /* Assets.xcassets */; };
 		230D698026616C52088C99D7 /* SearchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B91B444C23C8FB251C29DBB /* SearchView.swift */; };
+		5ED704A200B5332D346B1C3A /* FilterChip.swift in Sources */ = {isa = PBXBuildFile; fileRef = 02EFA99582BDC3074DA47E30 /* FilterChip.swift */; };
+		D962069582D857A204CB5353 /* SearchModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A85D574B6CD8B517EC18DD58 /* SearchModel.swift */; };
+		F4C7278F5C77A8B17E87A642 /* DateRangeSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = C213666B9F39D3E915D157AF /* DateRangeSheet.swift */; };
+		12A4F9A0207083A4580146CA /* AlbumFilterSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 517E98CC572C94F895CCB728 /* AlbumFilterSheet.swift */; };
+		C6E0399B7B4F142A25CCCA5C /* SearchUITest.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA3FFCF14F3488990FD2D43F /* SearchUITest.swift */; };
 		25BF18EF2C44DD5230868A08 /* BackupModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E5E2D77889D7E0767218740 /* BackupModel.swift */; };
 		2924197FD7D715FC3762EF47 /* LoginScreenUITest.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB6BAE9BE0A575AB23FA36EC /* LoginScreenUITest.swift */; };
 		307C2654CD5972A25FB7FD87 /* iOSApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 668CECA83ACC03A83C85A623 /* iOSApp.swift */; };
@@ -80,6 +85,11 @@
 		175D8CFCE1C9A5F324CF286E /* SplashView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SplashView.swift; sourceTree = "<group>"; };
 		1944B80BC5FFC5FA5890B926 /* ShareSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareSheet.swift; sourceTree = "<group>"; };
 		1B91B444C23C8FB251C29DBB /* SearchView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchView.swift; sourceTree = "<group>"; };
+		02EFA99582BDC3074DA47E30 /* FilterChip.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FilterChip.swift; sourceTree = "<group>"; };
+		A85D574B6CD8B517EC18DD58 /* SearchModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchModel.swift; sourceTree = "<group>"; };
+		C213666B9F39D3E915D157AF /* DateRangeSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DateRangeSheet.swift; sourceTree = "<group>"; };
+		517E98CC572C94F895CCB728 /* AlbumFilterSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlbumFilterSheet.swift; sourceTree = "<group>"; };
+		FA3FFCF14F3488990FD2D43F /* SearchUITest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchUITest.swift; sourceTree = "<group>"; };
 		1DDFEE5AD15378B895C7EEF8 /* ShellNavUITest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShellNavUITest.swift; sourceTree = "<group>"; };
 		1DFBECFCC9F496A5E5A7E4A9 /* AlbumDetailModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlbumDetailModel.swift; sourceTree = "<group>"; };
 		1E5E2D77889D7E0767218740 /* BackupModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackupModel.swift; sourceTree = "<group>"; };
@@ -214,6 +224,7 @@
 				1944B80BC5FFC5FA5890B926 /* ShareSheet.swift */,
 				B700549866EDECB46A0197BA /* ToastCapsule.swift */,
 				EBE55C2F770C5A1A9BDC4A4A /* Zoomable.swift */,
+				02EFA99582BDC3074DA47E30 /* FilterChip.swift */,
 			);
 			path = components;
 			sourceTree = "<group>";
@@ -251,6 +262,9 @@
 			isa = PBXGroup;
 			children = (
 				1B91B444C23C8FB251C29DBB /* SearchView.swift */,
+				A85D574B6CD8B517EC18DD58 /* SearchModel.swift */,
+				C213666B9F39D3E915D157AF /* DateRangeSheet.swift */,
+				517E98CC572C94F895CCB728 /* AlbumFilterSheet.swift */,
 			);
 			path = search;
 			sourceTree = "<group>";
@@ -311,6 +325,7 @@
 				4FFA39F5CC69EA72D81034D4 /* TabsUITest.swift */,
 				557CD0155EF2B04131A54D7A /* TimelineGridUITest.swift */,
 				A3D69D4ECFA590DA47FFF4F5 /* ViewerUITest.swift */,
+				FA3FFCF14F3488990FD2D43F /* SearchUITest.swift */,
 			);
 			path = iosAppUITests;
 			sourceTree = "<group>";
@@ -438,6 +453,7 @@
 				4F64FAD9DB93AC0771DDD737 /* TabsUITest.swift in Sources */,
 				11D0DCF382111EEA8EA282A5 /* TimelineGridUITest.swift in Sources */,
 				BCEFD83FA87B3DE42880F4DA /* ViewerUITest.swift in Sources */,
+				C6E0399B7B4F142A25CCCA5C /* SearchUITest.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -471,6 +487,10 @@
 				FFF93642A27B8411D7A8E6BE /* RootView.swift in Sources */,
 				860F54753FD32795997799C5 /* Router.swift in Sources */,
 				230D698026616C52088C99D7 /* SearchView.swift in Sources */,
+				D962069582D857A204CB5353 /* SearchModel.swift in Sources */,
+				F4C7278F5C77A8B17E87A642 /* DateRangeSheet.swift in Sources */,
+				12A4F9A0207083A4580146CA /* AlbumFilterSheet.swift in Sources */,
+				5ED704A200B5332D346B1C3A /* FilterChip.swift in Sources */,
 				8FA0062F01F116EA24FFEBC2 /* SectionHeaders.swift in Sources */,
 				1881D71D2451F4DB729F359E /* SelectionTopBar.swift in Sources */,
 				A3A979B1758037EEA7A35CE0 /* ShareSheet.swift in Sources */,

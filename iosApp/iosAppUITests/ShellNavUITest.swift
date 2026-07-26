@@ -32,10 +32,10 @@ final class ShellNavUITest: XCTestCase {
             || error.waitForExistence(timeout: 5)
         XCTAssertTrue(collectionsShown, "No Collections surface rendered")
 
-        // Search tab shows the honest placeholder empty state.
+        // Search tab is idle with no query/filters yet — it shows the recents surface (Batch E).
         tabBar.buttons["Search"].tap()
-        let searchEmpty = app.descendants(matching: .any)["search-empty"].firstMatch
-        XCTAssertTrue(searchEmpty.waitForExistence(timeout: 10), "Search placeholder did not render")
+        let searchRecent = app.descendants(matching: .any)["search-recent"].firstMatch
+        XCTAssertTrue(searchRecent.waitForExistence(timeout: 10), "Search idle surface did not render")
 
         // Photos tab returns to the timeline.
         tabBar.buttons["Photos"].tap()
