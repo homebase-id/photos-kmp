@@ -23,6 +23,9 @@ data class ViewerUiState(
     val deletedAny: Boolean = false,   // any delete happened this viewer session → hosts refresh on close
 ) {
     val current: PhotoItem? get() = items.getOrNull(index)
+
+    /** Derived from the current item — no separate field to keep out of sync on swipe. */
+    val isFavorite: Boolean get() = current?.isFavorite ?: false
 }
 
 /** One-time events the native layer consumes (kept off the StateFlow). */
@@ -84,6 +87,35 @@ class ViewerViewModel(
         } else {
             _state.update { it.copy(isDeleting = false) }
             _events.tryEmit(ViewerEvent.Error("Couldn't delete"))
+        }
+    }
+
+    /** Fire-and-forget favorite toggle of the current item (Android). */
+    fun toggleFavoriteCurrent() {
+        viewModelScope.launch { toggleFavoriteCurrentAndWait() }
+    }
+
+    /**
+     * Flip favorite on the current item, suspending until done — iOS awaits this. Optimistic:
+     * the `items` entry flips immediately (so swiping away and back keeps it), then reverts with
+     * an [ViewerEvent.Error] if the repository write fails.
+     */
+    suspend fun toggleFavoriteCurrentAndWait() {
+        val target = _state.value.current ?: return
+        val newValue = !target.isFavorite
+        _state.update { s -> s.copy(items = s.items.map { if (it.fileId == target.fileId) it.copy(isFavorite = newValue) else it }) }
+        val ok = try {
+            repository.setFavorite(target.fileId, newValue)
+        } catch (e: CancellationException) {
+            _state.update { s -> s.copy(items = s.items.map { if (it.fileId == target.fileId) it.copy(isFavorite = target.isFavorite) else it }) }
+            throw e
+        } catch (e: Exception) {
+            Logger.w(tag = TAG) { "favorite failed: ${e.message}" }
+            false
+        }
+        if (!ok) {
+            _state.update { s -> s.copy(items = s.items.map { if (it.fileId == target.fileId) it.copy(isFavorite = target.isFavorite) else it }) }
+            _events.tryEmit(ViewerEvent.Error("Couldn't update favorite"))
         }
     }
 

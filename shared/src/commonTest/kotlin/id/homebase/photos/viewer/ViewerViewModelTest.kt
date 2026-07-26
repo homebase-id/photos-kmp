@@ -36,8 +36,11 @@ class ViewerViewModelTest {
         var deleteResult: Boolean = true,
         var deleteThrows: Boolean = false,
         val deleteGate: CompletableDeferred<Unit>? = null,
+        var favoriteResult: Boolean = true,
+        var favoriteThrows: Boolean = false,
     ) : PhotosRepository {
         val deletedBatches = mutableListOf<List<Uuid>>()
+        val favoriteCalls = mutableListOf<Pair<Uuid, Boolean>>()
 
         override fun observePhotos(): Flow<List<PhotoItem>> =
             MutableStateFlow(emptyList<PhotoItem>()).asStateFlow()
@@ -58,7 +61,11 @@ class ViewerViewModelTest {
         override suspend fun prepareVideo(item: PhotoItem): VideoHandle? = null
         override suspend fun disposeVideo(handle: VideoHandle) {}
 
-        override suspend fun setFavorite(fileId: Uuid, favorite: Boolean): Boolean = true
+        override suspend fun setFavorite(fileId: Uuid, favorite: Boolean): Boolean {
+            favoriteCalls += fileId to favorite
+            if (favoriteThrows) throw IllegalStateException("favorite exploded")
+            return favoriteResult
+        }
         override suspend fun setArchived(fileIds: List<Uuid>, archived: Boolean): PhotoStatusResult = PhotoStatusResult()
         override suspend fun softDelete(fileIds: List<Uuid>): PhotoStatusResult = PhotoStatusResult()
         override suspend fun restore(fileIds: List<Uuid>): PhotoStatusResult = PhotoStatusResult()
@@ -259,5 +266,68 @@ class ViewerViewModelTest {
         inFlight.join()
         assertFalse(vm.state.value.isDeleting)
         assertEquals(listOf(p1), vm.state.value.items)
+    }
+
+    @Test
+    fun isFavorite_derivedFromCurrentItem() = runTest(dispatcher) {
+        val favored = p1.copy(isFavorite = true)
+        val vm = ViewerViewModel(listOf(p2, favored), 0, RecordingDeleteRepository())
+
+        assertFalse(vm.state.value.isFavorite)
+        vm.setIndex(1)
+        assertTrue(vm.state.value.isFavorite)
+    }
+
+    @Test
+    fun toggleFavoriteCurrent_flipsOptimisticallyAndPersistsUpdatedItem() = runTest(dispatcher) {
+        val repo = RecordingDeleteRepository()
+        val vm = ViewerViewModel(listOf(p2, p1), 1, repo)
+        advanceUntilIdle()
+
+        vm.toggleFavoriteCurrentAndWait()
+        advanceUntilIdle()
+
+        assertTrue(vm.state.value.isFavorite)
+        assertTrue(vm.state.value.items[1].isFavorite)
+        assertEquals(listOf(p1.fileId to true), repo.favoriteCalls)
+
+        // Swiping away and back keeps the flip — it lives on the items list entry, not a side field.
+        vm.setIndex(0)
+        assertFalse(vm.state.value.isFavorite)
+        vm.setIndex(1)
+        assertTrue(vm.state.value.isFavorite)
+    }
+
+    @Test
+    fun toggleFavoriteCurrent_onFailure_revertsAndEmitsError() = runTest(dispatcher) {
+        val repo = RecordingDeleteRepository(favoriteResult = false)
+        val vm = ViewerViewModel(listOf(p2, p1), 1, repo)
+        val events = mutableListOf<ViewerEvent>()
+        val collector = launch { vm.events.collect { events += it } }
+        advanceUntilIdle()
+
+        vm.toggleFavoriteCurrentAndWait()
+        advanceUntilIdle()
+
+        assertFalse(vm.state.value.isFavorite)
+        assertFalse(vm.state.value.items[1].isFavorite)
+        assertTrue(events.single() is ViewerEvent.Error)
+        collector.cancel()
+    }
+
+    @Test
+    fun toggleFavoriteCurrent_onThrow_revertsAndEmitsError() = runTest(dispatcher) {
+        val repo = RecordingDeleteRepository(favoriteThrows = true)
+        val vm = ViewerViewModel(listOf(p2, p1), 1, repo)
+        val events = mutableListOf<ViewerEvent>()
+        val collector = launch { vm.events.collect { events += it } }
+        advanceUntilIdle()
+
+        vm.toggleFavoriteCurrentAndWait()
+        advanceUntilIdle()
+
+        assertFalse(vm.state.value.isFavorite)
+        assertTrue(events.single() is ViewerEvent.Error)
+        collector.cancel()
     }
 }

@@ -28,6 +28,9 @@ import id.homebase.photos.data.PhotosRepository
 import id.homebase.photos.data.PhotosRepositoryImpl
 import id.homebase.photos.domain.AlbumItem
 import id.homebase.photos.domain.PhotoItem
+import id.homebase.photos.library.ArchiveViewModel
+import id.homebase.photos.library.FavoritesViewModel
+import id.homebase.photos.library.TrashViewModel
 import id.homebase.photos.timeline.TimelineViewModel
 import id.homebase.photos.viewer.VideoHandle
 import id.homebase.photos.viewer.ViewerViewModel
@@ -61,6 +64,11 @@ val photosModule = module {
     }
 
     factory { TimelineViewModel(get(), get()) } // eventBus: sync-completion reload
+
+    // Favorites/Archive/Trash: same PhotosRepository, one factory each per Batch D.
+    factory { FavoritesViewModel(get()) }
+    factory { ArchiveViewModel(get()) }
+    factory { TrashViewModel(get()) }
 
     // Albums: files off the local index, membership via server queryBatch, writes straight to
     // the server (upload/update/delete providers are apiModule factories). driveSyncManager is
@@ -215,3 +223,12 @@ suspend fun prepareVideo(item: PhotoItem): VideoHandle? =
 /** iOS-callable: delete a prepared video's temp file. */
 suspend fun disposeVideo(handle: VideoHandle) =
     KoinPlatform.getKoin().get<PhotosRepository>().disposeVideo(handle)
+
+/** iOS-callable factory: resolves the favorites ViewModel from Koin (Swift has no DSL). */
+fun favoritesViewModel(): FavoritesViewModel = KoinPlatform.getKoin().get()
+
+/** iOS-callable factory: resolves the archive ViewModel from Koin (Swift has no DSL). */
+fun archiveViewModel(): ArchiveViewModel = KoinPlatform.getKoin().get()
+
+/** iOS-callable factory: resolves the trash ViewModel from Koin (Swift has no DSL). */
+fun trashViewModel(): TrashViewModel = KoinPlatform.getKoin().get()

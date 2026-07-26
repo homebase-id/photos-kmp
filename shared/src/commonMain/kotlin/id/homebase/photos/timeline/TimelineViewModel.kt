@@ -9,6 +9,9 @@ import id.homebase.photos.data.PhotosRepository
 import kotlinx.coroutines.flow.filterIsInstance
 import id.homebase.photos.domain.PhotoItem
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -33,6 +36,7 @@ data class TimelineUiState(
     val error: String? = null,
     val selectedIds: Set<String> = emptySet(),          // PhotoItem.fileId.toString() keys
     val isDeleting: Boolean = false,
+    val isMutating: Boolean = false,                    // a favorite/archive write is in flight
 ) {
     val inSelectionMode: Boolean get() = selectedIds.isNotEmpty()
 
@@ -49,6 +53,8 @@ data class TimelineSection(val title: String, val items: List<PhotoItem>)
 sealed interface TimelineEvent {
     data class Error(val message: String) : TimelineEvent
     data class Deleted(val count: Int) : TimelineEvent
+    data class Favorited(val count: Int) : TimelineEvent
+    data class Archived(val count: Int) : TimelineEvent
 }
 
 class TimelineViewModel(
@@ -156,6 +162,89 @@ class TimelineViewModel(
             _state.update { it.copy(isDeleting = false) }
             emitError("Couldn't delete")
         }
+    }
+
+    /** Fire-and-forget favorite of the selection (Android). */
+    fun favoriteSelected() {
+        viewModelScope.launch { favoriteSelectedAndWait() }
+    }
+
+    /**
+     * Favorite the selected photos, suspending until done — iOS awaits this. Flips `isFavorite`
+     * on the matching items in place (they stay in the timeline — only Archive/Trash drop items).
+     */
+    suspend fun favoriteSelectedAndWait() {
+        val current = _state.value
+        if (current.isMutating || current.selectedIds.isEmpty()) return
+        val targets = current.selectedPhotos
+        _state.update { it.copy(isMutating = true) }
+        val succeededIds = try {
+            coroutineScope {
+                targets.map { photo -> async { photo.fileId to repository.setFavorite(photo.fileId, true) } }
+                    .awaitAll()
+            }.filter { it.second }.map { it.first }.toSet()
+        } catch (e: CancellationException) {
+            _state.update { it.copy(isMutating = false) }
+            throw e
+        } catch (e: Exception) {
+            Logger.w(tag = TAG) { "favorite failed: ${e.message}" }
+            _state.update { it.copy(isMutating = false) }
+            emitError(e.message ?: "Couldn't favorite")
+            return
+        }
+        if (succeededIds.isEmpty()) {
+            _state.update { it.copy(isMutating = false) }
+            emitError("Couldn't favorite")
+            return
+        }
+        _state.update {
+            val updated = it.pagedItems.map { p -> if (p.fileId in succeededIds) p.copy(isFavorite = true) else p }
+            it.copy(
+                isMutating = false,
+                pagedItems = updated,
+                sections = groupIntoMonthSections(updated),
+            )
+        }
+        _events.tryEmit(TimelineEvent.Favorited(succeededIds.size))
+    }
+
+    /** Fire-and-forget archive of the selection (Android). */
+    fun archiveSelected() {
+        viewModelScope.launch { archiveSelectedAndWait() }
+    }
+
+    /**
+     * Archive the selected photos, suspending until done — iOS awaits this. Mirrors
+     * [deleteSelectedAndWait]: drops the succeeded ones from state and clears the selection.
+     */
+    suspend fun archiveSelectedAndWait() {
+        val current = _state.value
+        if (current.isMutating || current.selectedIds.isEmpty()) return
+        val doomed = current.selectedPhotos
+        _state.update { it.copy(isMutating = true) }
+        val result = try {
+            repository.setArchived(doomed.map { it.fileId }, archived = true)
+        } catch (e: CancellationException) {
+            _state.update { it.copy(isMutating = false) }
+            throw e
+        } catch (e: Exception) {
+            Logger.w(tag = TAG) { "archive failed: ${e.message}" }
+            _state.update { it.copy(isMutating = false) }
+            emitError(e.message ?: "Couldn't archive")
+            return
+        }
+        val succeededIds = result.succeeded.toSet()
+        _state.update {
+            val remaining = it.pagedItems.filterNot { p -> p.fileId in succeededIds }
+            it.copy(
+                isMutating = false,
+                selectedIds = emptySet(),
+                pagedItems = remaining,
+                sections = groupIntoMonthSections(remaining),
+            )
+        }
+        _events.tryEmit(TimelineEvent.Archived(succeededIds.size))
+        if (result.failed.isNotEmpty()) emitError("Couldn't archive ${result.failed.size} item(s)")
     }
 
     /** Paginate older by userDate, appending to the flat list without regrouping prior months. */
