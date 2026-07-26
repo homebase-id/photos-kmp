@@ -83,6 +83,25 @@ class SearchFlowTest {
     }
 
     @Test
+    fun composingQuery_beforeFirstSubmit_showsRecents_notBlankGrid() {
+        // One keystroke makes the query non-blank, but nothing has run yet (hasSearched=false,
+        // isSearching=false) — must not fall through to an empty results grid (a blank screen)
+        // while the user is still typing.
+        composeRule.setContent {
+            PhotosTheme {
+                SearchScreen(
+                    state = SearchUiState(query = "s", recent = listOf("beach")),
+                    onBack = {},
+                )
+            }
+        }
+
+        composeRule.onNodeWithTag("search-recent").assertExists()
+        composeRule.onNodeWithTag("search-results-grid").assertDoesNotExist()
+        composeRule.onNodeWithTag("search-empty").assertDoesNotExist()
+    }
+
+    @Test
     fun searchingState_showsSkeleton_notResultsOrEmpty() {
         composeRule.setContent {
             PhotosTheme {

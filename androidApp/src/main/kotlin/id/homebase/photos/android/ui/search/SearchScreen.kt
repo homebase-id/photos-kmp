@@ -238,7 +238,12 @@ fun SearchScreen(
                             testTag = "search-error",
                         )
 
-                    state.isIdle ->
+                    // Not just state.isIdle: a query becomes non-blank the moment the user types
+                    // a character, but nothing has actually run yet until submit(). Gating on
+                    // isIdle alone would fall through to an empty results grid — a blank screen —
+                    // for the whole time the user is composing a query. Keep showing recents
+                    // until a search has actually completed (or is in flight — caught above).
+                    !state.hasSearched && !state.isSearching && state.sections.isEmpty() ->
                         RecentSearchesList(
                             recent = state.recent,
                             onRecentClick = onRecentClick,
