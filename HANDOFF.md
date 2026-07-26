@@ -1,8 +1,8 @@
 # Homebase Photos — Handoff
 
 **For:** a fresh Claude Code session opened in `~/Documents/GitHub/homebase-photos`.
-**Updated:** 2026-07-25 ~17:25 (keep this file current — owner directive: refresh it at the end of every finishing run).
-**Status:** MVP + Round 1 + background-backup (Android `f57a3da` + iOS `32ebd7e`) committed on `photos-mvp`. **UI/UX redesign underway** — a master plan drives per-batch, per-platform rebuilds. **Batch A (Foundation) committed** (`fa16d47`..`fea44ce` on `photos-ui-batch-a`); **Batch B (Viewer) IMPLEMENTED + build/test-verified, uncommitted** on `photos-ui-batch-b` (= batch A + `photos-mvp` merged), worktree `.claude/worktrees/photos-ui-batch-a`. On-device QA partially blocked by the identity-host outage (see Blockers #0).
+**Updated:** 2026-07-26 (keep this file current — owner directive: refresh it at the end of every finishing run).
+**Status:** MVP + Round 1 + background-backup (Android `f57a3da` + iOS `32ebd7e`) committed on `photos-mvp`. **UI/UX redesign underway** — a master plan drives per-batch, per-platform rebuilds. Batches **A** (`photos-ui-batch-a`), **B**, **C** (`photos-ui-batch-c` `a6d8cf2..d2cb8fd`) done; **Batch D (Favorites/Archive/Trash) DONE, review-clean, committed `6b4435f..c5dc8e4` on `photos-ui-batch-d`**, worktree `.claude/worktrees/photos-ui-batch-a`. On-device QA for B/C/D = the ship gate (owner login needed).
 
 ---
 
@@ -18,6 +18,49 @@ target is now **26.0** (bumped on `photos-mvp` `32ebd7e`, merged here), so Liqui
 (metadata) → **F** Memories → **G** Settings & backup. Each batch = shared-headless agent (if needed) → Android + iOS
 agents in parallel → one verifier build pass. Shared `StateFlow<UiState>` stays the source of truth; new on-drive formats
 need owner schema sign-off.
+
+**Batch D — Favorites · Archive · Trash (done, review-clean on `photos-ui-batch-d` `6b4435f..c5dc8e4`; 2026-07-26; on-device QA outstanding):**
+- **SCHEMA (mirrors the official photo-app exactly — no new on-drive shape minted):** favorite = tag
+  `Md5.toGuidId("favorite")` = hex `8a6b6ea3aa08285be1d4e00725aa9090` in the PHOTO's `appData.tags` (test-pinned,
+  byte-identical to js-lib `toGuidId` = bare-hex md5); archive/trash/restore = header-only patch `archivalStatus`
+  1/2/0 (same carry-everything machinery as album membership: aesKey kept, IV rotated, versionTag + all appData +
+  allowDistribution, retry ×3); permanent delete = existing hard delete. Official query shapes: timeline =
+  archivalStatus `[0]` ONLY (SQL-level exclusion in `selectPhotosPage`, regression-tested on in-memory SQLDelight incl.
+  restore-reincludes); favorites = `tagsMatchAll [favoriteTag]` + `[0,1,3]` (server queryBatch — tags aren't indexed
+  locally); archive/trash pages read the LOCAL index (`archivalStatus = 1/2`). Evidence: plan doc
+  `2026-07-26-ui-batch-d-plan.md` + photo-app `PhotoProvider.ts`/`usePhoto.ts`.
+- **Shared:** `PhotoConfig.FAVORITE_TAG`; `carryOverAppData` gained optional `archivalStatus` override;
+  `PhotoStatusWriter` (setFavorite idempotent, setArchivalStatus batch → `PhotoStatusResult`); repository
+  setFavorite/setArchived/softDelete/restore/permanentDelete + loadFavoritesPage(cursor)/loadArchivedPage/loadTrashPage;
+  `PhotoItem.isFavorite`; `setFavoriteBatch` chunked(8). VMs: `FavoritesViewModel`/`ArchiveViewModel`/`TrashViewModel`
+  (month sections reuse `groupIntoMonthSections`, Timeline-parity selection, mutations keep pagination depth +
+  fire-and-forget `repository.sync()` reconcile — Archive/Trash `refreshAndWait` sync-then-read);
+  `TimelineViewModel.favoriteSelected/archiveSelected`; `ViewerViewModel.isFavorite + toggleFavoriteCurrent`
+  (optimistic + revert). `:shared:jvmTest` 1171 green.
+- **Android:** `Route.Favorites/Archive/Trash` + one `LibraryStateScreen` scaffold; Collections library rows enabled;
+  viewer heart toggle FIRST in action bar; timeline selection favorite/archive + heart badge on cells; VM events →
+  snackbars; trash confirm dialog. **iOS:** Router cases + one `LibraryStateView` (xcodegen project — pbxproj is
+  generated); same features/ids; `.hbPhotosChanged` posted after mutations; toasts incl. new Favorited/Archived.
+- **Ids (both platforms):** `favorites-grid`, `archive-grid`, `trash-grid`, `trash-restore`, `trash-delete-forever`,
+  `favorite-toggle`, `selection-favorite`, `selection-archive`, `favorites-unfavorite`, `archive-unarchive`,
+  `delete-confirm`, `trash-header-note`. Trash note copy (both): "Items stay in the bin until you delete them
+  permanently."
+- **Verified:** full matrix green (jvmTest 1171/0, shared android+iosSim compiles, assembleDebug + androidTest compile,
+  iOS build-for-testing iPhone 17/iOS 26.5). K/N link-cache flake fix: `:shared:linkDebugFrameworkIosSimulatorArm64
+  --rerun-tasks`.
+- **OWNER DECISION NEEDED:** nothing routes into the bin yet — "Delete" in Timeline/Viewer is still a hard delete;
+  `softDelete` exists in the repo but no UI calls it. Google-Photos convention would be Delete → bin, "Delete forever"
+  only in Trash. One-line-ish change per platform once decided.
+- **Parked (ruled):** iOS library mutations post `.hbPhotosChanged` → always-alive Timeline refreshes to page 1
+  (pre-existing observer behavior; content correctness beats scroll position; future fix = self-filtering observer).
+- **Deferred minors:** viewer `toggleFavoriteCurrent` lacks in-flight guard (double-tap converges via version-retry);
+  3 library VMs share a ~150-line skeleton per platform (matches per-screen convention); `timeline-favorite-badge` tag
+  misnomer (renders in library grids too); "Couldn't load Trash" copy; viewer capsule now 5 buttons in 360pt (eyeball
+  on-device); viewer from Archive/Trash still offers hard Delete/Add-to-album; Android trash note always visible vs iOS
+  hides in selection.
+- **On-device QA gate (owner login):** favorite round-trip visible in the official web app (tag interop); archive →
+  leaves Timeline (and loadMore doesn't resurrect it) → shows in Archive after the background sync lands; trash →
+  restore → back in Timeline; trash → delete forever; cross-device flag sync.
 
 **Batch C — Collections & album management (done, review-clean on `photos-ui-batch-c` `a6d8cf2..7da26ff`; 2026-07-25 night; on-device QA outstanding):**
 - **SCHEMA (owner-signed, supersedes spec §4's album detail):** the official Odin Photos app source at
