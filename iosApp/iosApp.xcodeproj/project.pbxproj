@@ -66,6 +66,9 @@
 		FA830F1061C91A02CB269FA8 /* LibraryStatesUITest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 820167F00506216B414EB14E /* LibraryStatesUITest.swift */; };
 		FD6D9B662504CD7BF0390176 /* CollectionsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA45D5565F50D7DD5CB99F04 /* CollectionsView.swift */; };
 		FFF93642A27B8411D7A8E6BE /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2925723D1B4AC9FBF45C9F3F /* RootView.swift */; };
+		3A9F2C81E5B7D40C6F218A93 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E31A5C2D4F60B98A1C3E570 /* SettingsView.swift */; };
+		9B4D7E20C1A3F5860E92B7D4 /* PhotoLibraryObserver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C8E1F3A9B2D74E60A18C4F2 /* PhotoLibraryObserver.swift */; };
+		4F7B9D13A6C2E8057D31F9B6 /* SettingsUITest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A2C5E71F3B9D0462E85C1A7 /* SettingsUITest.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -140,6 +143,9 @@
 		F949AE315CA21867B1B8E96E /* HomeTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeTabView.swift; sourceTree = "<group>"; };
 		FA45D5565F50D7DD5CB99F04 /* CollectionsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CollectionsView.swift; sourceTree = "<group>"; };
 		FE12529FFAC6C3810BBB8DB8 /* AlbumsModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlbumsModel.swift; sourceTree = "<group>"; };
+		7E31A5C2D4F60B98A1C3E570 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		5C8E1F3A9B2D74E60A18C4F2 /* PhotoLibraryObserver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoLibraryObserver.swift; sourceTree = "<group>"; };
+		8A2C5E71F3B9D0462E85C1A7 /* SettingsUITest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsUITest.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -180,6 +186,7 @@
 				A24F8A435F3D2FBE59F2E496 /* login */,
 				0410E2F1BD7C0F6A7C6F44A8 /* navigation */,
 				9D71C3815ADB42FD22AE40D0 /* search */,
+				2D6F9A31C8E5B7042F1A6D83 /* settings */,
 				65EB5C2BFD56E44F1A191246 /* timeline */,
 				1449397359226F9AD1901149 /* viewer */,
 			);
@@ -291,8 +298,17 @@
 			children = (
 				1E5E2D77889D7E0767218740 /* BackupModel.swift */,
 				41D4BE707FCC5D054D20D0E7 /* BackupView.swift */,
+				5C8E1F3A9B2D74E60A18C4F2 /* PhotoLibraryObserver.swift */,
 			);
 			path = backup;
+			sourceTree = "<group>";
+		};
+		2D6F9A31C8E5B7042F1A6D83 /* settings */ = {
+			isa = PBXGroup;
+			children = (
+				7E31A5C2D4F60B98A1C3E570 /* SettingsView.swift */,
+			);
+			path = settings;
 			sourceTree = "<group>";
 		};
 		BE7601F6A884B30E4C9569A0 /* create */ = {
@@ -326,6 +342,7 @@
 				557CD0155EF2B04131A54D7A /* TimelineGridUITest.swift */,
 				A3D69D4ECFA590DA47FFF4F5 /* ViewerUITest.swift */,
 				FA3FFCF14F3488990FD2D43F /* SearchUITest.swift */,
+				8A2C5E71F3B9D0462E85C1A7 /* SettingsUITest.swift */,
 			);
 			path = iosAppUITests;
 			sourceTree = "<group>";
@@ -454,6 +471,7 @@
 				11D0DCF382111EEA8EA282A5 /* TimelineGridUITest.swift in Sources */,
 				BCEFD83FA87B3DE42880F4DA /* ViewerUITest.swift in Sources */,
 				C6E0399B7B4F142A25CCCA5C /* SearchUITest.swift in Sources */,
+				4F7B9D13A6C2E8057D31F9B6 /* SettingsUITest.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -488,6 +506,8 @@
 				860F54753FD32795997799C5 /* Router.swift in Sources */,
 				230D698026616C52088C99D7 /* SearchView.swift in Sources */,
 				D962069582D857A204CB5353 /* SearchModel.swift in Sources */,
+				3A9F2C81E5B7D40C6F218A93 /* SettingsView.swift in Sources */,
+				9B4D7E20C1A3F5860E92B7D4 /* PhotoLibraryObserver.swift in Sources */,
 				F4C7278F5C77A8B17E87A642 /* DateRangeSheet.swift in Sources */,
 				12A4F9A0207083A4580146CA /* AlbumFilterSheet.swift in Sources */,
 				5ED704A200B5332D346B1C3A /* FilterChip.swift in Sources */,

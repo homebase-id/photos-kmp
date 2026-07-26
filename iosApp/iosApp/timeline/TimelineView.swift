@@ -14,9 +14,8 @@ struct TimelineView: View {
     @Environment(\.colorScheme) private var scheme
     @EnvironmentObject private var router: Router
     @StateObject private var model = TimelineModel()
-    @State private var showLogoutDialog = false
+    @State private var showSettings = false
     @State private var showDeleteDialog = false
-    @State private var showBackup = false
     @State private var showAddToAlbum = false
 
     private var inSelectionMode: Bool { model.uiState?.inSelectionMode == true }
@@ -47,18 +46,8 @@ struct TimelineView: View {
             .navigationTitle("Photos")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button(action: { showBackup = true }) {
-                        Image(systemName: "arrow.clockwise.icloud")
-                            .font(.system(size: 22))
-                            .foregroundColor(PhotosColor.onSurfaceVariant(scheme))
-                            .frame(width: 32, height: 32)
-                    }
-                    .accessibilityLabel("Backup")
-                    .accessibilityIdentifier("backup-button")
-                }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button(action: { showLogoutDialog = true }) {
+                    Button(action: { showSettings = true }) {
                         Image(systemName: "person.crop.circle")
                             .font(.system(size: 26))
                             .foregroundColor(PhotosColor.onSurfaceVariant(scheme))
@@ -89,21 +78,6 @@ struct TimelineView: View {
             .toolbarBackground(PhotosColor.surface(scheme), for: .navigationBar)
         }
         .tint(PhotosColor.primary(scheme))
-        // Log-out confirmation. Confirm → the shared suspend logout() (SKIE-bridged to async); the
-        // RootModel gate observes authState and swaps back to the login screen on the flip.
-        .confirmationDialog(
-            "Log out?",
-            isPresented: $showLogoutDialog,
-            titleVisibility: .visible
-        ) {
-            Button("Log out", role: .destructive) {
-                Task { try? await PhotosModuleKt.youAuthFlowManager().logout() }
-            }
-            .accessibilityIdentifier("logout-confirm")
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("You'll need to sign in again to see your photos.")
-        }
         // Delete confirmation (C5). An alert, not a confirmationDialog — iOS 26 renders the
         // dialog as a card with no visible Cancel, wrong for a destructive confirm.
         .alert(deleteTitle, isPresented: $showDeleteDialog) {
@@ -116,7 +90,8 @@ struct TimelineView: View {
             Text("They'll be removed from your Homebase photo library.")
         }
         .task { model.start() }
-        .sheet(isPresented: $showBackup) { BackupView() }
+        // Settings sheet (Batch G): account button opens Settings; backup + logout live there now.
+        .sheet(isPresented: $showSettings) { SettingsView() }
         // Add-to-album from the selection (C3). The picker owns its own AlbumsViewModel and
         // reports one line back; a landed add leaves selection mode, like a completed action.
         .sheet(isPresented: $showAddToAlbum) {

@@ -15,6 +15,7 @@ struct BackupView: View {
                 backupSection
                 if enabled { folderSection }
             }
+            .accessibilityIdentifier("backup-screen")
             .navigationTitle("Backup")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -77,7 +78,9 @@ struct BackupView: View {
     // MARK: - Folder picker
 
     private var folderSection: some View {
-        Section("Folders") {
+        // The header carries the cross-platform `backup-folders` id — a modifier on the Section
+        // itself would smear onto every row.
+        Section(header: Text("Folders").accessibilityIdentifier("backup-folders")) {
             let folders = model.state?.folders ?? []
             if folders.isEmpty {
                 Text("No device folders found.")

@@ -2,7 +2,7 @@ import SwiftUI
 import UIKit
 
 // Google Photos visual language: pure neutral system surfaces (white in light, black in dark),
-// near-black/near-white text, system-blue accent rationed to where the user acts. Tokens resolve
+// near-black/near-white text, moss-green accent rationed to where the user acts. Tokens resolve
 // through UIKit dynamic colors so light/dark tracks the trait collection automatically.
 
 // MARK: - Hex initializer
@@ -45,11 +45,12 @@ enum PhotosColor {
     static var surface4: Color { Color(uiColor: .secondarySystemBackground) }
     static var surface5: Color { Color(uiColor: .secondarySystemBackground) }
 
-    // Accent — system blue, like Google Photos' blue over white.
-    static var primary: Color { Color(uiColor: .systemBlue) }
+    // Accent — moss green (Batch G, owner-approved), mirroring the Android tokens. The scheme-less
+    // vars carry the LIGHT values; scheme-aware call sites use the `(_ s:)` accessors below.
+    static var primary: Color { Color(red: 0.369, green: 0.478, blue: 0.322) }            // 5E7A52
     static var onPrimary: Color { .white }
-    static var primaryContainer: Color { Color(uiColor: .systemBlue).opacity(0.15) }
-    static var onPrimaryContainer: Color { Color(uiColor: .systemBlue) }
+    static var primaryContainer: Color { Color(red: 0.835, green: 0.878, blue: 0.780) }   // D5E0C7
+    static var onPrimaryContainer: Color { Color(red: 0.106, green: 0.157, blue: 0.082) } // 1B2815
 
     static var secondary: Color { Color(uiColor: .secondaryLabel) }
     static var onSecondary: Color { Color(uiColor: .systemBackground) }
@@ -93,10 +94,11 @@ extension PhotosColor {
     static func surface4(_ s: ColorScheme) -> Color { surface4 }
     static func surface5(_ s: ColorScheme) -> Color { surface5 }
 
-    static func primary(_ s: ColorScheme) -> Color { primary }
-    static func onPrimary(_ s: ColorScheme) -> Color { onPrimary }
-    static func primaryContainer(_ s: ColorScheme) -> Color { primaryContainer }
-    static func onPrimaryContainer(_ s: ColorScheme) -> Color { onPrimaryContainer }
+    // Moss accent is the one token family that branches per scheme explicitly (Android parity).
+    static func primary(_ s: ColorScheme) -> Color { s == .dark ? Color(red: 0.651, green: 0.765, blue: 0.580) : Color(red: 0.369, green: 0.478, blue: 0.322) }  // A6C394 / 5E7A52
+    static func onPrimary(_ s: ColorScheme) -> Color { s == .dark ? Color(red: 0.106, green: 0.157, blue: 0.082) : .white }                                       // 1B2815 / white
+    static func primaryContainer(_ s: ColorScheme) -> Color { s == .dark ? Color(red: 0.235, green: 0.302, blue: 0.188) : Color(red: 0.835, green: 0.878, blue: 0.780) } // 3C4D30 / D5E0C7
+    static func onPrimaryContainer(_ s: ColorScheme) -> Color { s == .dark ? Color(red: 0.835, green: 0.878, blue: 0.780) : Color(red: 0.106, green: 0.157, blue: 0.082) }
 
     static func secondary(_ s: ColorScheme) -> Color { secondary }
     static func onSecondary(_ s: ColorScheme) -> Color { onSecondary }

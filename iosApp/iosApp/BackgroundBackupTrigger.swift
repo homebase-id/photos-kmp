@@ -28,12 +28,13 @@ enum BackgroundBackupTrigger {
 
     /// Queue the next auto pass. ponytail: best-effort only — iOS treats `earliestBeginDate` as a
     /// floor and picks the real timing, so there's no exact 6h cadence like Android's PeriodicWork;
-    /// we just re-arm on launch and after every run.
-    static func schedule() {
+    /// we just re-arm on launch and after every run. `after` lets the library-change observer pull
+    /// the floor to +60s (same identifier — submit replaces any pending request).
+    static func schedule(after interval: TimeInterval = 6 * 60 * 60) {
         let request = BGProcessingTaskRequest(identifier: periodicId)
         request.requiresNetworkConnectivity = true          // mirrors Android NetworkType.CONNECTED
         request.requiresExternalPower = false               // no charging gate (D5)
-        request.earliestBeginDate = Date(timeIntervalSinceNow: 6 * 60 * 60)  // ~6h floor
+        request.earliestBeginDate = Date(timeIntervalSinceNow: interval)
         try? BGTaskScheduler.shared.submit(request)
     }
 
