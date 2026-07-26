@@ -54,6 +54,8 @@ val photosModule = module {
             credentialsManager = get(),
             imageLoader = get(),
             driveFileProvider = get(),
+            driveUploadProvider = get(),
+            driveQueryProvider = get(),
             fileOps = get(),
         )
     }

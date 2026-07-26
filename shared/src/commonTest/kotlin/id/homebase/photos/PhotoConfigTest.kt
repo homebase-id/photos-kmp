@@ -1,7 +1,9 @@
 package id.homebase.photos
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import kotlin.uuid.Uuid
 
 class PhotoConfigTest {
     @Test fun videoMarkerIsPayloadContentType() {
@@ -26,5 +28,10 @@ class PhotoConfigTest {
         assertTrue(PhotoConfig.ALBUM_FILE_TYPE == 400)
         assertTrue(PhotoConfig.LIBRARY_METADATA_FILE_TYPE == 900)
         assertFalse(PhotoConfig.ALBUM_FILE_TYPE == PhotoConfig.LIBRARY_METADATA_FILE_TYPE)
+    }
+    // Official Odin Photos favorite tag = toGuidId('favorite') = md5("favorite"). Pinned so our
+    // client and the official photo-app agree on which tag means "favorite".
+    @Test fun favoriteTagMatchesTheOfficialToGuidIdHash() {
+        assertEquals(Uuid.parse("8a6b6ea3-aa08-285b-e1d4-e00725aa9090"), PhotoConfig.FAVORITE_TAG)
     }
 }

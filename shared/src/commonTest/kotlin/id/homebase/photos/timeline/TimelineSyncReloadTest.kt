@@ -2,6 +2,8 @@ package id.homebase.photos.timeline
 
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
+import id.homebase.photos.data.FavoritesPage
+import id.homebase.photos.data.PhotoStatusResult
 import id.homebase.photos.data.PhotosRepository
 import id.homebase.photos.domain.PhotoItem
 import id.homebase.photos.viewer.VideoHandle
@@ -45,6 +47,15 @@ class TimelineSyncReloadTest {
         override suspend fun loadOriginalBytes(item: PhotoItem): ByteArray? = null
         override suspend fun prepareVideo(item: PhotoItem): VideoHandle? = null
         override suspend fun disposeVideo(handle: VideoHandle) {}
+
+        override suspend fun setFavorite(fileId: Uuid, favorite: Boolean): Boolean = true
+        override suspend fun setArchived(fileIds: List<Uuid>, archived: Boolean): PhotoStatusResult = PhotoStatusResult()
+        override suspend fun softDelete(fileIds: List<Uuid>): PhotoStatusResult = PhotoStatusResult()
+        override suspend fun restore(fileIds: List<Uuid>): PhotoStatusResult = PhotoStatusResult()
+        override suspend fun permanentDelete(fileIds: List<Uuid>): Boolean = true
+        override suspend fun loadFavoritesPage(cursor: String?, limit: Int): FavoritesPage = FavoritesPage(emptyList(), null)
+        override suspend fun loadArchivedPage(beforeUserDate: Long?, limit: Int): List<PhotoItem> = emptyList()
+        override suspend fun loadTrashPage(beforeUserDate: Long?, limit: Int): List<PhotoItem> = emptyList()
     }
 
     private fun item(userDate: Long): PhotoItem = PhotoItem(
@@ -126,6 +137,15 @@ class TimelineSyncReloadTest {
             override suspend fun loadOriginalBytes(item: PhotoItem): ByteArray? = null
             override suspend fun prepareVideo(item: PhotoItem): VideoHandle? = null
             override suspend fun disposeVideo(handle: VideoHandle) {}
+
+            override suspend fun setFavorite(fileId: Uuid, favorite: Boolean): Boolean = true
+            override suspend fun setArchived(fileIds: List<Uuid>, archived: Boolean): PhotoStatusResult = PhotoStatusResult()
+            override suspend fun softDelete(fileIds: List<Uuid>): PhotoStatusResult = PhotoStatusResult()
+            override suspend fun restore(fileIds: List<Uuid>): PhotoStatusResult = PhotoStatusResult()
+            override suspend fun permanentDelete(fileIds: List<Uuid>): Boolean = true
+            override suspend fun loadFavoritesPage(cursor: String?, limit: Int): FavoritesPage = FavoritesPage(emptyList(), null)
+            override suspend fun loadArchivedPage(beforeUserDate: Long?, limit: Int): List<PhotoItem> = emptyList()
+            override suspend fun loadTrashPage(beforeUserDate: Long?, limit: Int): List<PhotoItem> = emptyList()
         }
         val bus = EventBus()
         val vm = TimelineViewModel(repo, bus)

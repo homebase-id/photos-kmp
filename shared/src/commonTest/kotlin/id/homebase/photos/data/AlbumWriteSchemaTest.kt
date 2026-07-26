@@ -165,6 +165,19 @@ class AlbumWriteSchemaTest {
         assertEquals(existing.tags, recontented.tags)
     }
 
+    @Test
+    fun carryOverAppData_archivalStatusOverride_setsOnlyThatField() {
+        val existing = photoFile(tags = listOf(OTHER_ALBUM)).fileMetadata.appData
+        assertEquals(ArchivalStatus.None, existing.archivalStatus)
+
+        val archived = AlbumWriteSchema.carryOverAppData(existing, archivalStatus = ArchivalStatus.Archived)
+
+        assertEquals(ArchivalStatus.Archived, archived.archivalStatus)
+        assertEquals(existing.tags, archived.tags)
+        assertEquals(existing.content, archived.content)
+        assertEquals(existing.previewThumbnail, archived.previewThumbnail)
+    }
+
     // --- membership tag math ----------------------------------------------------------------
 
     @Test

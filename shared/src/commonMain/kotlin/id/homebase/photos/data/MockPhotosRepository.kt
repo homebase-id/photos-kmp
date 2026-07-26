@@ -81,11 +81,17 @@ class MockPhotosRepository(
 
     private val _photos = MutableStateFlow(all)
 
+    // Simple flag sets — the mock has no real archivalStatus column, just enough state to make
+    // the timeline/favorites/archive/trash contracts behave like the real repository.
+    private val favoriteIds = mutableSetOf<Uuid>()
+    private val archivedIds = mutableSetOf<Uuid>()
+    private val trashedIds = mutableSetOf<Uuid>()
+
     override fun observePhotos(): Flow<List<PhotoItem>> = _photos.asStateFlow()
 
     override suspend fun loadPage(beforeUserDate: Long?, limit: Int): List<PhotoItem> {
         val older = if (beforeUserDate == null) all else all.filter { it.userDate < beforeUserDate }
-        return older.take(limit)
+        return older.filterNot { it.fileId in archivedIds || it.fileId in trashedIds }.take(limit)
     }
 
     override suspend fun sync() {
@@ -95,8 +101,52 @@ class MockPhotosRepository(
     override suspend fun deletePhotos(fileIds: List<Uuid>): Boolean {
         val doomed = fileIds.toSet()
         all = all.filterNot { it.fileId in doomed }
+        favoriteIds -= doomed
+        archivedIds -= doomed
+        trashedIds -= doomed
         _photos.value = all
         return true
+    }
+
+    override suspend fun setFavorite(fileId: Uuid, favorite: Boolean): Boolean {
+        if (favorite) favoriteIds += fileId else favoriteIds -= fileId
+        all = all.map { if (it.fileId == fileId) it.copy(isFavorite = favorite) else it }
+        _photos.value = all
+        return true
+    }
+
+    override suspend fun setArchived(fileIds: List<Uuid>, archived: Boolean): PhotoStatusResult {
+        if (archived) archivedIds.addAll(fileIds) else archivedIds.removeAll(fileIds.toSet())
+        return PhotoStatusResult(succeeded = fileIds)
+    }
+
+    override suspend fun softDelete(fileIds: List<Uuid>): PhotoStatusResult {
+        trashedIds.addAll(fileIds)
+        return PhotoStatusResult(succeeded = fileIds)
+    }
+
+    override suspend fun restore(fileIds: List<Uuid>): PhotoStatusResult {
+        val restored = fileIds.toSet()
+        trashedIds -= restored
+        archivedIds -= restored
+        return PhotoStatusResult(succeeded = fileIds)
+    }
+
+    override suspend fun permanentDelete(fileIds: List<Uuid>): Boolean = deletePhotos(fileIds)
+
+    override suspend fun loadFavoritesPage(cursor: String?, limit: Int): FavoritesPage {
+        val items = all.filter { it.fileId in favoriteIds }.take(limit)
+        return FavoritesPage(items = items, nextCursor = null)
+    }
+
+    override suspend fun loadArchivedPage(beforeUserDate: Long?, limit: Int): List<PhotoItem> {
+        val older = if (beforeUserDate == null) all else all.filter { it.userDate < beforeUserDate }
+        return older.filter { it.fileId in archivedIds }.take(limit)
+    }
+
+    override suspend fun loadTrashPage(beforeUserDate: Long?, limit: Int): List<PhotoItem> {
+        val older = if (beforeUserDate == null) all else all.filter { it.userDate < beforeUserDate }
+        return older.filter { it.fileId in trashedIds }.take(limit)
     }
 
     @OptIn(ExperimentalEncodingApi::class)

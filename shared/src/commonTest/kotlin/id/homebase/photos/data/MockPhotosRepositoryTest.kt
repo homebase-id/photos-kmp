@@ -1,0 +1,79 @@
+package id.homebase.photos.data
+
+import kotlinx.coroutines.test.runTest
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
+
+/**
+ * The seeded pre-login repository must behave like the real one for Favorites/Archive/Trash so
+ * ViewModels and native grids can be built and screenshot-tested before login/sync exist.
+ */
+class MockPhotosRepositoryTest {
+
+    @Test
+    fun setFavorite_flipsIsFavoriteOnTheItemAndFeedsLoadFavoritesPage() = runTest {
+        val repo = MockPhotosRepository(seedCount = 5)
+        val target = repo.loadPage(null, 5).first()
+
+        repo.setFavorite(target.fileId, favorite = true)
+
+        val reloaded = repo.loadPage(null, 5).first { it.fileId == target.fileId }
+        assertTrue(reloaded.isFavorite)
+        assertEquals(listOf(target.fileId), repo.loadFavoritesPage(null, 10).items.map { it.fileId })
+
+        repo.setFavorite(target.fileId, favorite = false)
+        assertFalse(repo.loadPage(null, 5).first { it.fileId == target.fileId }.isFavorite)
+        assertTrue(repo.loadFavoritesPage(null, 10).items.isEmpty())
+    }
+
+    @Test
+    fun setArchived_hidesFromTimelineAndSurfacesInLoadArchivedPage() = runTest {
+        val repo = MockPhotosRepository(seedCount = 5)
+        val target = repo.loadPage(null, 5).first()
+
+        val result = repo.setArchived(listOf(target.fileId), archived = true)
+
+        assertEquals(listOf(target.fileId), result.succeeded)
+        assertTrue(repo.loadPage(null, 5).none { it.fileId == target.fileId }, "archived photos leave the timeline")
+        assertEquals(listOf(target.fileId), repo.loadArchivedPage(null, 10).map { it.fileId })
+    }
+
+    @Test
+    fun softDelete_hidesFromTimelineAndSurfacesInLoadTrashPage() = runTest {
+        val repo = MockPhotosRepository(seedCount = 5)
+        val target = repo.loadPage(null, 5).first()
+
+        repo.softDelete(listOf(target.fileId))
+
+        assertTrue(repo.loadPage(null, 5).none { it.fileId == target.fileId })
+        assertEquals(listOf(target.fileId), repo.loadTrashPage(null, 10).map { it.fileId })
+    }
+
+    @Test
+    fun restore_returnsAnArchivedOrTrashedPhotoToTheTimeline() = runTest {
+        val repo = MockPhotosRepository(seedCount = 5)
+        val (archived, trashed) = repo.loadPage(null, 5).let { it[0] to it[1] }
+        repo.setArchived(listOf(archived.fileId), archived = true)
+        repo.softDelete(listOf(trashed.fileId))
+
+        repo.restore(listOf(archived.fileId, trashed.fileId))
+
+        assertTrue(repo.loadPage(null, 5).map { it.fileId }.containsAll(listOf(archived.fileId, trashed.fileId)))
+        assertTrue(repo.loadArchivedPage(null, 10).isEmpty())
+        assertTrue(repo.loadTrashPage(null, 10).isEmpty())
+    }
+
+    @Test
+    fun permanentDelete_removesTheItemEntirely() = runTest {
+        val repo = MockPhotosRepository(seedCount = 5)
+        val target = repo.loadPage(null, 5).first()
+        repo.softDelete(listOf(target.fileId))
+
+        assertTrue(repo.permanentDelete(listOf(target.fileId)))
+
+        assertTrue(repo.loadTrashPage(null, 10).none { it.fileId == target.fileId })
+        assertTrue(repo.loadPage(null, 10).none { it.fileId == target.fileId })
+    }
+}

@@ -4,6 +4,7 @@ import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.AccessControlList
 import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.files.AppFileMetaData
+import id.homebase.api.client.drives.files.ArchivalStatus
 import id.homebase.api.client.drives.files.SecurityGroupType
 import id.homebase.api.client.drives.upload.FileUpdateInstructionSet
 import id.homebase.api.client.drives.upload.UpdateFileByFileIdRequest
@@ -37,6 +38,7 @@ internal object AlbumWriteSchema {
         existing: AppFileMetaData,
         tags: List<Uuid>? = existing.tags,
         content: String? = existing.content,
+        archivalStatus: ArchivalStatus? = existing.archivalStatus,
     ): UploadAppFileMetaData = UploadAppFileMetaData(
         uniqueId = existing.uniqueId,
         tags = tags,
@@ -44,7 +46,7 @@ internal object AlbumWriteSchema {
         dataType = existing.dataType,
         userDate = existing.userDate,
         groupId = existing.groupId,
-        archivalStatus = existing.archivalStatus,
+        archivalStatus = archivalStatus,
         content = content,
         previewThumbnail = existing.previewThumbnail,
     )

@@ -1,5 +1,8 @@
 package id.homebase.photos
 
+import id.homebase.api.crypto.Md5
+import kotlin.uuid.Uuid
+
 /** Static config for the Homebase Photos drive. Schema constants only — no file-build logic. */
 object PhotoConfig {
     // Existing Odin "Photo Library" drive — we reuse the same drive, registered by a NEW app.
@@ -19,6 +22,9 @@ object PhotoConfig {
     const val LIBRARY_METADATA_FILE_TYPE = 900
 
     const val PAYLOAD_KEY = "dflt_key" // satisfies ^[a-z0-9_]{8,10}$
+
+    // Official Odin Photos favorite marker: toGuidId('favorite') in the photo's appData.tags.
+    val FAVORITE_TAG: Uuid = Md5.toGuidId("favorite")
 
     // tiny / grid / fullscreen-preview. SPEC values (15x20/225x300/900x1200 == these max dims on 3:4).
     // ponytail: provisional — owner sign-off vs a real Photos drive file before Batch 1 upload.

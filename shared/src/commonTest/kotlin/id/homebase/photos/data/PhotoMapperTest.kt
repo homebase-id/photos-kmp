@@ -177,4 +177,23 @@ class PhotoMapperTest {
         )
         assertEquals(1_650_000_000_000L, PhotoMapper.fromHomebaseFile(hbf).userDate)
     }
+
+    @Test
+    fun isFavorite_trueOnlyWhenAppDataTagsContainTheFavoriteTag() {
+        val favorited = file(contentType = "image/jpeg").let {
+            it.copy(fileMetadata = it.fileMetadata.copy(
+                appData = it.fileMetadata.appData.copy(tags = listOf(PhotoConfig.FAVORITE_TAG)),
+            ))
+        }
+        val notFavorited = file(contentType = "image/jpeg").let {
+            it.copy(fileMetadata = it.fileMetadata.copy(
+                appData = it.fileMetadata.appData.copy(tags = listOf(Uuid.random())),
+            ))
+        }
+        val untagged = file(contentType = "image/jpeg")
+
+        assertTrue(PhotoMapper.fromHomebaseFile(favorited).isFavorite)
+        assertFalse(PhotoMapper.fromHomebaseFile(notFavorited).isFavorite)
+        assertFalse(PhotoMapper.fromHomebaseFile(untagged).isFavorite)
+    }
 }

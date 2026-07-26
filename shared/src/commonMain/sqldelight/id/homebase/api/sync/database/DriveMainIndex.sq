@@ -159,9 +159,24 @@ SELECT * FROM DriveMainIndex;
 -- filtering still happens in Kotlin against the deserialised jsonHeader (the
 -- canonical isSoftDeleted() predicate), so this returns Active rows only by
 -- fileState here and the caller drops any remaining archival-removed rows.
+-- archivalStatus = 0 (None): the official Odin Photos timeline query hides
+-- archived(1) AND trashed(2) rows — Batch D's Archive/Trash screens read those
+-- via selectPhotosByArchivalStatusPage instead.
 selectPhotosPage:
 SELECT jsonHeader FROM DriveMainIndex
 WHERE identityId = ? AND driveId = ? AND fileType = ? AND fileState = 1
+  AND archivalStatus = 0
+  AND userDate < ?
+ORDER BY userDate DESC, rowId DESC
+LIMIT ?;
+
+-- Archive/Trash screen page: same shape as selectPhotosPage but scoped to ONE
+-- archivalStatus (1=Archived, 2=Removed/trash) instead of the timeline's implicit
+-- "not archived, not trashed".
+selectPhotosByArchivalStatusPage:
+SELECT jsonHeader FROM DriveMainIndex
+WHERE identityId = ? AND driveId = ? AND fileType = ? AND fileState = 1
+  AND archivalStatus = ?
   AND userDate < ?
 ORDER BY userDate DESC, rowId DESC
 LIMIT ?;

@@ -170,6 +170,26 @@ class DriveMainIndexWrapper(
         return result
     }
 
+    /** Archive/Trash screen page — same shape as [selectPhotosPage], scoped to one archivalStatus. */
+    suspend fun selectPhotosByArchivalStatusPage(
+        identityId: Uuid,
+        driveId: Uuid,
+        fileType: Long,
+        archivalStatus: Long,
+        beforeUserDate: Long,
+        limit: Long,
+    ): List<HomebaseFile> {
+        val headers = databaseManager.readValue("selectPhotosByArchivalStatusPage") {
+            delegate.selectPhotosByArchivalStatusPage(identityId, driveId, fileType, archivalStatus, beforeUserDate, limit)
+                .executeAsList()
+        }
+        val result = ArrayList<HomebaseFile>(headers.size)
+        for (json in headers) {
+            result.add(OdinSystemSerializer.deserialize<HomebaseFile>(json))
+        }
+        return result
+    }
+
     suspend fun countAll(): Long =
         databaseManager.readValue("countAll") { delegate.countAll().executeAsOne() }
 

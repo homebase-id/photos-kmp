@@ -63,4 +63,28 @@ class QueryBatchTagFilterTest {
         assertEquals(listOf(a), PhotoQueries.albumQuery(a).queryParams.tagsMatchAtLeastOne)
         assertEquals(listOf(b), PhotoQueries.albumQuery(b).queryParams.tagsMatchAtLeastOne)
     }
+
+    @Test fun favoritesQueryFiltersByPhotoFileTypeAndTagsMatchAllFavoriteTag() {
+        val q = PhotoQueries.favoritesQuery().queryParams
+
+        assertEquals(listOf(PhotoConfig.PHOTO_FILE_TYPE), q.fileType)
+        assertNull(q.tagsMatchAtLeastOne, "favorites must require ALL of [favoriteTag], not just one")
+        assertEquals(listOf(PhotoConfig.FAVORITE_TAG), q.tagsMatchAll)
+        // official Odin Photos favorites query: none / archived / apps — everything but the bin
+        assertEquals(listOf(0, 1, 3), q.archivalStatus)
+    }
+
+    @Test fun favoritesQuerySortsByUserDateNewestFirst() {
+        val opts = PhotoQueries.favoritesQuery().resultOptionsRequest
+
+        assertEquals(QueryBatchSortField.UserDate, opts.sorting)
+        assertEquals(QueryBatchSortOrder.NewestFirst, opts.ordering)
+        assertEquals(true, opts.includeMetadataHeader)
+    }
+
+    @Test fun favoritesQueryCarriesTheGivenCursorAndPageSize() {
+        assertEquals(null, PhotoQueries.favoritesQuery().resultOptionsRequest.cursorState)
+        assertEquals("cursor-1", PhotoQueries.favoritesQuery(cursor = "cursor-1").resultOptionsRequest.cursorState)
+        assertEquals(10, PhotoQueries.favoritesQuery(maxRecords = 10).resultOptionsRequest.maxRecords)
+    }
 }

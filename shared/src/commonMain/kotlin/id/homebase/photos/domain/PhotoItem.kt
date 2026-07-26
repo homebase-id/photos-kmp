@@ -32,4 +32,5 @@ data class PhotoItem(
     val payloadContentType: String? = null, // real payload MIME (also decides isVideo upstream)
     val lastModified: Long? = null,          // cache-key freshness
     val thumbSizes: List<ImageSize> = emptyList(), // native server thumbnail sizes for size snapping
+    val isFavorite: Boolean = false,         // appData.tags contains PhotoConfig.FAVORITE_TAG
 )

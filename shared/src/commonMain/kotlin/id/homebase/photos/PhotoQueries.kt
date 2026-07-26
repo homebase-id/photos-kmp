@@ -41,4 +41,15 @@ object PhotoQueries {
         ),
         resultOptionsRequest = newestByUserDate,
     )
+
+    /** Favorited photos (tagged with FAVORITE_TAG), newest first, cursor-paged. */
+    fun favoritesQuery(cursor: String? = null, maxRecords: Int = ALBUM_PAGE_SIZE): QueryBatchRequest =
+        QueryBatchRequest(
+            queryParams = FileQueryParams(
+                fileType = listOf(PhotoConfig.PHOTO_FILE_TYPE),
+                tagsMatchAll = listOf(PhotoConfig.FAVORITE_TAG),
+                archivalStatus = albumArchivalStatus, // none / archived / apps — everything but the bin
+            ),
+            resultOptionsRequest = newestByUserDate.copy(maxRecords = maxRecords, cursorState = cursor),
+        )
 }

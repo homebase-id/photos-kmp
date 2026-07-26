@@ -3,7 +3,10 @@ package id.homebase.photos.data
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.HomebaseFile
+import id.homebase.api.client.drives.files.ArchivalStatus
 import id.homebase.api.client.drives.files.DriveFileProvider
+import id.homebase.api.client.drives.query.DriveQueryProvider
+import id.homebase.api.client.drives.upload.DriveUploadProvider
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.sync.DriveSyncManager
 import id.homebase.api.sync.database.DatabaseManager
@@ -16,6 +19,7 @@ import id.homebase.core.image.HomebaseImageLoader
 import id.homebase.core.image.ImageSize
 import id.homebase.core.image.thumbSizesFrom
 import id.homebase.photos.PhotoConfig
+import id.homebase.photos.PhotoQueries
 import id.homebase.photos.domain.PhotoItem
 import id.homebase.photos.viewer.VideoHandle
 import kotlinx.coroutines.CancellationException
@@ -41,8 +45,15 @@ class PhotosRepositoryImpl(
     private val credentialsManager: CredentialsManager,
     private val imageLoader: HomebaseImageLoader,
     private val driveFileProvider: DriveFileProvider,
+    driveUploadProvider: DriveUploadProvider,
+    private val driveQueryProvider: DriveQueryProvider,
     private val fileOps: FileOperationsProvider,
 ) : PhotosRepository {
+
+    private val statusWriter = PhotoStatusWriter(
+        driveId = driveId,
+        drive = OdinAlbumDriveGateway(driveFileProvider, driveUploadProvider),
+    )
 
     private val _photos = MutableStateFlow<List<PhotoItem>>(emptyList())
 
@@ -86,6 +97,48 @@ class PhotosRepositoryImpl(
         val outcome = driveFileProvider.deleteFiles(driveId, fileIds)
         // Not-found counts as deleted — the goal state (file absent) already holds.
         return outcome.results.all { it.localFileDeleted || it.localFileNotFound }
+    }
+
+    override suspend fun setFavorite(fileId: Uuid, favorite: Boolean): Boolean =
+        statusWriter.setFavorite(fileId, favorite)
+
+    override suspend fun setArchived(fileIds: List<Uuid>, archived: Boolean): PhotoStatusResult =
+        statusWriter.setArchivalStatus(fileIds, if (archived) ArchivalStatus.Archived else ArchivalStatus.None)
+
+    override suspend fun softDelete(fileIds: List<Uuid>): PhotoStatusResult =
+        statusWriter.setArchivalStatus(fileIds, ArchivalStatus.Removed)
+
+    override suspend fun restore(fileIds: List<Uuid>): PhotoStatusResult =
+        statusWriter.setArchivalStatus(fileIds, ArchivalStatus.None)
+
+    override suspend fun permanentDelete(fileIds: List<Uuid>): Boolean = deletePhotos(fileIds)
+
+    override suspend fun loadFavoritesPage(cursor: String?, limit: Int): FavoritesPage {
+        val response = driveQueryProvider.queryBatch(driveId, PhotoQueries.favoritesQuery(cursor, limit))
+        val items = response.searchResults
+            .filterNot { it.isSoftDeleted() }
+            .map(PhotoMapper::fromHomebaseFile)
+        return FavoritesPage(items = items, nextCursor = response.cursorState.takeIf { response.hasMoreRows })
+    }
+
+    override suspend fun loadArchivedPage(beforeUserDate: Long?, limit: Int): List<PhotoItem> =
+        loadStatusPage(ArchivalStatus.Archived, beforeUserDate, limit)
+
+    override suspend fun loadTrashPage(beforeUserDate: Long?, limit: Int): List<PhotoItem> =
+        loadStatusPage(ArchivalStatus.Removed, beforeUserDate, limit)
+
+    private suspend fun loadStatusPage(status: ArchivalStatus, beforeUserDate: Long?, limit: Int): List<PhotoItem> {
+        val identityId = activeIdentity() ?: return emptyList()
+        val cursor = beforeUserDate ?: Long.MAX_VALUE
+        val files = databaseManager.driveMainIndex.selectPhotosByArchivalStatusPage(
+            identityId = identityId,
+            driveId = driveId,
+            fileType = PhotoConfig.PHOTO_FILE_TYPE.toLong(),
+            archivalStatus = status.value.toLong(),
+            beforeUserDate = cursor,
+            limit = limit.toLong(),
+        )
+        return files.map(PhotoMapper::fromHomebaseFile)
     }
 
     override suspend fun loadThumbnailBytes(item: PhotoItem, maxDim: Int): ByteArray? {

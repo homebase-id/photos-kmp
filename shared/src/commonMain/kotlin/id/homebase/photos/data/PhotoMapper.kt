@@ -46,6 +46,7 @@ object PhotoMapper {
             payloadContentType = contentType,
             lastModified = payload?.lastModified,
             thumbSizes = thumbSizesFrom(payload?.thumbnails),
+            isFavorite = appData.tags?.contains(PhotoConfig.FAVORITE_TAG) == true,
         )
     }
 }
