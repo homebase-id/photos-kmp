@@ -7,6 +7,7 @@ import id.homebase.photos.domain.AlbumItem
 import id.homebase.photos.domain.PhotoItem
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
@@ -183,6 +184,121 @@ class SearchViewModelTest {
     }
 
     @Test
+    fun submitAndWait_noMatchingAlbumQuery_showsNoResults_withoutCallingRepository() = runTest(dispatcher) {
+        val repo = FakeSearchPhotosRepository(defaultResults = listOf(item(1L)))
+        val vm = SearchViewModel(repo, FakeAlbumsRepository(), recentStore)
+        settle()
+
+        vm.onQueryChange("nonexistent")
+        vm.submitAndWait()
+        advanceUntilIdle()
+
+        assertTrue(repo.searchCalls.isEmpty(), "a non-matching query must not fall through to an unconstrained search")
+        val state = vm.state.value
+        assertTrue(state.hasSearched)
+        assertTrue(state.sections.isEmpty())
+        assertFalse(state.isSearching)
+    }
+
+    @Test
+    fun submitAndWait_noMatchingAlbumQueryWithDateFilterSet_stillShowsNoResults() = runTest(dispatcher) {
+        val repo = FakeSearchPhotosRepository(defaultResults = listOf(item(1L)))
+        val vm = SearchViewModel(repo, FakeAlbumsRepository(), recentStore)
+        settle()
+
+        vm.setDateRange(1L, 100L) // date-only search — repo returns its defaultResults for this
+        advanceUntilIdle()
+        assertTrue(vm.state.value.sections.isNotEmpty(), "date-only search should have found something")
+        val callsBeforeQuery = repo.searchCalls.size
+
+        vm.onQueryChange("nonexistent")
+        vm.submitAndWait()
+        advanceUntilIdle()
+
+        assertEquals(
+            callsBeforeQuery,
+            repo.searchCalls.size,
+            "a non-matching query must short-circuit even with a date chip set — not silently ignore it",
+        )
+        val state = vm.state.value
+        assertTrue(state.hasSearched)
+        assertTrue(state.sections.isEmpty(), "a non-matching free-text query means zero results regardless of other filters")
+    }
+
+    @Test
+    fun submitAndWait_thenFilterChange_cancelsStaleSubmitSearch_filterWins() = runTest(dispatcher) {
+        val album = AlbumItem(fileId = Uuid.random(), albumId = Uuid.random(), name = "Ski Trip", coverFileId = null)
+        val gate = CompletableDeferred<Unit>()
+        val freshItem = item(1L)
+        val repo = FakeSearchPhotosRepository(
+            resultsByAlbum = mapOf(album.albumId to listOf(freshItem)),
+            resultsSequence = mutableListOf(listOf(freshItem)),
+            firstCallGate = gate,
+        )
+        val vm = SearchViewModel(repo, FakeAlbumsRepository(albums = listOf(album)), recentStore)
+        settle()
+
+        vm.onQueryChange("ski") // resolves to the album — real search, not the no-match short-circuit
+        // submitAndWait pushes to recentStore first, a REAL (off-scheduler) DB dispatcher hop, so
+        // a fixed settle() isn't reliably long enough — poll (like awaitState elsewhere) until
+        // repo.search() (call #1) actually runs and parks on the gate.
+        launch { vm.submitAndWait() }
+        awaitState(vm) { it.isSearching }
+        assertEquals(1, repo.searchCalls.size)
+        assertTrue(vm.state.value.isSearching, "submit's search still in flight")
+
+        vm.setDateRange(1L, 100L) // cancels the parked submit search, runs its own (call #2) and wins
+        advanceUntilIdle()
+
+        assertEquals(2, repo.searchCalls.size)
+        assertFalse(vm.state.value.isSearching)
+        assertEquals(listOf(freshItem), vm.state.value.sections.flatMap { it.items }, "the filter's search wins")
+
+        gate.complete(Unit) // release the cancelled submit's parked continuation, if anything resumes it
+        advanceUntilIdle()
+
+        // The stale submit must not clobber the fresher filter search's result or spinner state.
+        assertEquals(listOf(freshItem), vm.state.value.sections.flatMap { it.items })
+        assertFalse(vm.state.value.isSearching)
+    }
+
+    @Test
+    fun setDateRange_thenSubmitAndWait_cancelsStaleFilterSearch_submitWins() = runTest(dispatcher) {
+        val album = AlbumItem(fileId = Uuid.random(), albumId = Uuid.random(), name = "Ski Trip", coverFileId = null)
+        val gate = CompletableDeferred<Unit>()
+        val freshItem = item(2L)
+        val repo = FakeSearchPhotosRepository(
+            resultsByAlbum = mapOf(album.albumId to listOf(freshItem)),
+            resultsSequence = mutableListOf(listOf(freshItem)),
+            firstCallGate = gate,
+        )
+        val vm = SearchViewModel(repo, FakeAlbumsRepository(albums = listOf(album)), recentStore)
+        settle()
+
+        vm.setDateRange(1L, 100L) // becomes call #1, parks on the gate
+        advanceUntilIdle()
+        assertEquals(1, repo.searchCalls.size)
+        assertTrue(vm.state.value.isSearching, "filter's search still in flight")
+
+        vm.onQueryChange("ski")
+        // Same real-DB-hop caveat as above: poll instead of a bare advanceUntilIdle() so the
+        // recentStore push lands before submit's search (call #2) runs and resolves.
+        launch { vm.submitAndWait() } // cancels the parked filter search, runs its own (call #2) and wins
+        awaitState(vm) { it.sections.isNotEmpty() && !it.isSearching }
+
+        assertEquals(2, repo.searchCalls.size)
+        assertFalse(vm.state.value.isSearching)
+        assertEquals(listOf(freshItem), vm.state.value.sections.flatMap { it.items }, "submit's search wins")
+
+        gate.complete(Unit) // release the cancelled filter search's parked continuation, if anything resumes it
+        advanceUntilIdle()
+
+        // The stale filter search must not clobber the fresher submit's result or spinner state.
+        assertEquals(listOf(freshItem), vm.state.value.sections.flatMap { it.items })
+        assertFalse(vm.state.value.isSearching)
+    }
+
+    @Test
     fun setTypeFilter_nonIdle_runsSearchWithIsVideoCriteria() = runTest(dispatcher) {
         val repo = FakeSearchPhotosRepository()
         val vm = SearchViewModel(repo, FakeAlbumsRepository(), recentStore)
@@ -246,13 +362,16 @@ class SearchViewModelTest {
 
     @Test
     fun submitAndWait_repositoryThrows_setsErrorAndClearsSearching() = runTest(dispatcher) {
+        // Album matches the query so the search reaches the (throwing) repository instead of
+        // hitting the no-match short-circuit added for Critical 1.
+        val album = AlbumItem(fileId = Uuid.random(), albumId = Uuid.random(), name = "Oops Album", coverFileId = null)
         val repo = FakeSearchPhotosRepository(searchThrows = true)
-        val vm = SearchViewModel(repo, FakeAlbumsRepository(), recentStore)
+        val vm = SearchViewModel(repo, FakeAlbumsRepository(albums = listOf(album)), recentStore)
         settle()
 
         vm.onQueryChange("oops")
         vm.submitAndWait()
-        advanceUntilIdle()
+        settle()
 
         val state = vm.state.value
         assertTrue(state.error != null)

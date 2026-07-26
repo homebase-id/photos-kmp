@@ -10,6 +10,7 @@ import id.homebase.photos.timeline.TimelineSection
 import id.homebase.photos.timeline.groupIntoMonthSections
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -92,20 +93,26 @@ class SearchViewModel(
         launchSearch()
     }
 
-    /** Fire-and-forget submit (Android) — shares the same cancel-the-stale-one tracking. */
+    /** Fire-and-forget submit (Android) — routes through [submitAndWait]'s own job tracking. */
     fun submit() {
-        searchJob?.cancel()
-        searchJob = viewModelScope.launch { submitAndWait() }
+        viewModelScope.launch { submitAndWait() }
     }
 
-    /** Records a non-blank query in recents, then runs the search — iOS awaits this. */
+    /**
+     * Records a non-blank query in recents, then runs the search — iOS awaits this. Runs under
+     * the same tracked [searchJob] as the filter setters (via [launchTracked]) so a concurrent
+     * filter change cancels a stale submit (and vice versa) instead of racing it; the suspend
+     * shape is kept so SKIE still exposes this as an awaitable async function on iOS.
+     */
     suspend fun submitAndWait() {
         val query = _state.value.query
-        if (query.isNotBlank()) {
-            recentStore.push(query)
-            _state.update { it.copy(recent = recentStore.load()) }
-        }
-        runSearch()
+        launchTracked {
+            if (query.isNotBlank()) {
+                recentStore.push(query)
+                _state.update { it.copy(recent = recentStore.load()) }
+            }
+            runSearch()
+        }.join()
     }
 
     /** Back to the blank/no-filter state — clears results and every chip. */
@@ -125,8 +132,20 @@ class SearchViewModel(
 
     /** Cancels any in-flight search launch before starting the new one. */
     private fun launchSearch() {
+        launchTracked { runSearch() }
+    }
+
+    /**
+     * Cancels whatever [searchJob] currently tracks, launches [block] as the new one, and
+     * records it as the current [searchJob] before returning — the single choke point both
+     * [launchSearch] and [submitAndWait] go through so a submit and a filter change can never
+     * run their searches concurrently; whichever fires second cancels the other.
+     */
+    private fun launchTracked(block: suspend () -> Unit): Job {
         searchJob?.cancel()
-        searchJob = viewModelScope.launch { runSearch() }
+        val job = viewModelScope.launch { block() }
+        searchJob = job
+        return job
     }
 
     /**
@@ -134,6 +153,12 @@ class SearchViewModel(
      * filters) in which case the screen just resets to showing recents. A non-blank query is
      * resolved against album names (the scope ruling's free-text semantics) and unioned with any
      * explicit [SearchUiState.albumFilter] pick.
+     *
+     * A non-blank query that matches no album name — and has no explicit [SearchUiState.albumFilter]
+     * to fall back on — means zero results by definition (free-text only ever matches album
+     * names), so this short-circuits to an empty result set without calling the repository at
+     * all, regardless of any date/type chips also set; otherwise those chips alone would run an
+     * unconstrained-by-query search and silently ignore that the query matched nothing.
      */
     private suspend fun runSearch() {
         val current = _state.value
@@ -150,6 +175,10 @@ class SearchViewModel(
             } else {
                 emptyList()
             }
+            if (current.query.isNotBlank() && matchedAlbumIds.isEmpty() && current.albumFilter == null) {
+                _state.update { it.copy(isSearching = false, hasSearched = true, sections = emptyList(), error = null) }
+                return
+            }
             val albumIds = (matchedAlbumIds + listOfNotNull(current.albumFilter?.albumId)).distinct()
             val criteria = SearchCriteria(
                 fromUserDate = current.fromUserDate,
@@ -162,7 +191,12 @@ class SearchViewModel(
                 it.copy(isSearching = false, hasSearched = true, sections = groupIntoMonthSections(results))
             }
         } catch (e: CancellationException) {
-            _state.update { it.copy(isSearching = false) }
+            // Only reset if this job is still the current one — a superseding search (which
+            // cancelled this one) may already be mid-flight with isSearching = true; wiping it
+            // here would clobber that newer search's spinner.
+            if (currentCoroutineContext()[Job] === searchJob) {
+                _state.update { it.copy(isSearching = false) }
+            }
             throw e
         } catch (e: Exception) {
             Logger.w(tag = TAG) { "search failed: ${e.message}" }
