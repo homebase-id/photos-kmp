@@ -9,6 +9,7 @@ import id.homebase.photos.domain.AlbumItem
 import id.homebase.photos.timeline.TimelineSection
 import id.homebase.photos.timeline.groupIntoMonthSections
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -62,6 +63,11 @@ class SearchViewModel(
     private val _state = MutableStateFlow(SearchUiState())
     val state: StateFlow<SearchUiState> = _state.asStateFlow()
 
+    // Tracks the in-flight search launch (filter setters + fire-and-forget submit) so a later
+    // request cancels an earlier one still in flight — the last request wins, not the last to
+    // finish. Not used for clearRecent/init's recents load, which don't race a search.
+    private var searchJob: Job? = null
+
     init {
         viewModelScope.launch { _state.update { it.copy(recent = recentStore.load()) } }
     }
@@ -73,22 +79,23 @@ class SearchViewModel(
 
     fun setDateRange(from: Long?, to: Long?) {
         _state.update { it.copy(fromUserDate = from, toUserDate = to) }
-        viewModelScope.launch { runSearch() }
+        launchSearch()
     }
 
     fun setTypeFilter(filter: TypeFilter) {
         _state.update { it.copy(typeFilter = filter) }
-        viewModelScope.launch { runSearch() }
+        launchSearch()
     }
 
     fun setAlbumFilter(album: AlbumItem?) {
         _state.update { it.copy(albumFilter = album) }
-        viewModelScope.launch { runSearch() }
+        launchSearch()
     }
 
-    /** Fire-and-forget submit (Android). */
+    /** Fire-and-forget submit (Android) — shares the same cancel-the-stale-one tracking. */
     fun submit() {
-        viewModelScope.launch { submitAndWait() }
+        searchJob?.cancel()
+        searchJob = viewModelScope.launch { submitAndWait() }
     }
 
     /** Records a non-blank query in recents, then runs the search — iOS awaits this. */
@@ -106,7 +113,7 @@ class SearchViewModel(
         _state.update {
             it.copy(fromUserDate = null, toUserDate = null, typeFilter = TypeFilter.ALL, albumFilter = null)
         }
-        viewModelScope.launch { runSearch() }
+        launchSearch()
     }
 
     fun clearRecent() {
@@ -114,6 +121,12 @@ class SearchViewModel(
             recentStore.clear()
             _state.update { it.copy(recent = emptyList()) }
         }
+    }
+
+    /** Cancels any in-flight search launch before starting the new one. */
+    private fun launchSearch() {
+        searchJob?.cancel()
+        searchJob = viewModelScope.launch { runSearch() }
     }
 
     /**

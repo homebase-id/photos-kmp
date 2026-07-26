@@ -147,10 +147,7 @@ class PhotosRepositoryImpl(
             from = criteria.fromUserDate,
             to = criteria.toUserDate,
         )
-        return items
-            .filter { criteria.isVideo == null || it.isVideo == criteria.isVideo }
-            .sortedByDescending { it.userDate }
-            .take(SEARCH_RESULT_CAP) // ponytail: unpaged 500-cap, paginate if Redmi says so
+        return applySearchFilters(items, criteria, SEARCH_RESULT_CAP)
     }
 
     // Album membership is server-side (tags aren't indexed locally) — same query path as
@@ -304,3 +301,20 @@ internal fun viewerVideoFileName(fileId: Uuid, mimeType: String?): String =
         "video/webm" -> "webm"
         else -> "mp4"
     }
+
+/**
+ * Shared post-fetch predicate for [PhotosRepositoryImpl.search] — date range + type, newest
+ * first, capped. Applies to BOTH branches: the album branch's server query has no date bound of
+ * its own (it only filters archivalStatus), so without this a date-range chip combined with an
+ * album chip would silently return the whole album regardless of date. Pure/no I/O — unit
+ * testable in isolation from the album/date-range fetch branches.
+ */
+internal fun applySearchFilters(items: List<PhotoItem>, criteria: SearchCriteria, cap: Int): List<PhotoItem> {
+    val from = criteria.fromUserDate ?: Long.MIN_VALUE
+    val to = criteria.toUserDate ?: Long.MAX_VALUE
+    return items
+        .filter { it.userDate in from..to }
+        .filter { criteria.isVideo == null || it.isVideo == criteria.isVideo }
+        .sortedByDescending { it.userDate }
+        .take(cap)
+}

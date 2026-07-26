@@ -5,6 +5,7 @@ import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.photos.albums.FakeAlbumsRepository
 import id.homebase.photos.domain.AlbumItem
 import id.homebase.photos.domain.PhotoItem
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -17,6 +18,7 @@ import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.uuid.Uuid
@@ -140,6 +142,44 @@ class SearchViewModelTest {
         assertEquals(SearchCriteria(fromUserDate = 1_000L, toUserDate = 3_000L), repo.searchCalls.single())
         assertTrue(vm.state.value.hasSearched)
         assertEquals(results, vm.state.value.sections.flatMap { it.items })
+    }
+
+    @Test
+    fun overlappingFilterChanges_cancelsStaleSearch_lastRequestWins() = runTest(dispatcher) {
+        // First search parks on the gate (simulating a slow round-trip) BEFORE it ever reads a
+        // result — a second filter change fires before it resolves. The stale search must be
+        // cancelled, so it never reaches (and never consumes) resultsSequence; only the fresh
+        // second call does.
+        val gate = CompletableDeferred<Unit>()
+        val freshItem = item(1L)
+        val repo = FakeSearchPhotosRepository(
+            resultsSequence = mutableListOf(listOf(freshItem)),
+            firstCallGate = gate,
+        )
+        val vm = SearchViewModel(repo, FakeAlbumsRepository(), recentStore)
+        settle()
+
+        vm.setDateRange(1L, 100L) // search #1 launches, parks on the gate before returning
+        advanceUntilIdle()
+        assertEquals(1, repo.searchCalls.size)
+        assertTrue(vm.state.value.isSearching, "first search still in flight")
+
+        vm.setDateRange(200L, 300L) // cancels #1 before it resolves, launches #2 (no gate — call 2)
+        advanceUntilIdle()
+
+        assertEquals(2, repo.searchCalls.size)
+        assertFalse(vm.state.value.isSearching)
+        assertEquals(listOf(freshItem), vm.state.value.sections.flatMap { it.items }, "the later request wins")
+        assertEquals(200L, vm.state.value.fromUserDate)
+        assertEquals(300L, vm.state.value.toUserDate)
+
+        gate.complete(Unit) // release the cancelled first call's continuation, if anything resumes it
+        advanceUntilIdle()
+
+        // The stale search must not clobber the fresh result once its (now-cancelled) coroutine
+        // tries to resume.
+        assertEquals(listOf(freshItem), vm.state.value.sections.flatMap { it.items })
+        assertEquals(200L, vm.state.value.fromUserDate)
     }
 
     @Test
