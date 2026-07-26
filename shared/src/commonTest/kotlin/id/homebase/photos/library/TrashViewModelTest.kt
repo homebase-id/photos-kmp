@@ -121,6 +121,7 @@ class TrashViewModelTest {
         val events = mutableListOf<TrashEvent>()
         val collector = launch { vm.events.collect { events += it } }
         advanceUntilIdle()
+        val syncCountBeforeMutation = repo.syncCount // init's refresh already synced once
 
         vm.toggleSelection(p1)
         vm.restoreSelectedAndWait()
@@ -131,6 +132,11 @@ class TrashViewModelTest {
         assertTrue(state.selectedIds.isEmpty())
         assertEquals(listOf(listOf(p1.fileId)), repo.restoreCalls)
         assertEquals(listOf<TrashEvent>(TrashEvent.Restored(1, 0)), events)
+        assertEquals(
+            syncCountBeforeMutation + 1,
+            repo.syncCount,
+            "a successful restore must reconcile the local index",
+        )
         collector.cancel()
     }
 
@@ -186,6 +192,7 @@ class TrashViewModelTest {
         val events = mutableListOf<TrashEvent>()
         val collector = launch { vm.events.collect { events += it } }
         advanceUntilIdle()
+        val syncCountBeforeMutation = repo.syncCount
 
         vm.toggleSelection(p1)
         vm.restoreSelectedAndWait()
@@ -196,6 +203,7 @@ class TrashViewModelTest {
         assertTrue(state.isSelected(p1))
         assertFalse(state.isMutating)
         assertTrue(events.single() is TrashEvent.Error)
+        assertEquals(syncCountBeforeMutation, repo.syncCount, "a failed restore must not fire a background sync")
         collector.cancel()
     }
 
@@ -207,6 +215,7 @@ class TrashViewModelTest {
         val events = mutableListOf<TrashEvent>()
         val collector = launch { vm.events.collect { events += it } }
         advanceUntilIdle()
+        val syncCountBeforeMutation = repo.syncCount
 
         vm.toggleSelection(p1)
         vm.permanentDeleteSelectedAndWait()
@@ -217,6 +226,11 @@ class TrashViewModelTest {
         assertTrue(state.selectedIds.isEmpty())
         assertEquals(listOf(listOf(p1.fileId)), repo.permanentDeleteCalls)
         assertEquals(listOf<TrashEvent>(TrashEvent.PermanentlyDeleted(1)), events)
+        assertEquals(
+            syncCountBeforeMutation + 1,
+            repo.syncCount,
+            "a successful permanent delete must reconcile the local index",
+        )
         collector.cancel()
     }
 
@@ -228,6 +242,7 @@ class TrashViewModelTest {
         val events = mutableListOf<TrashEvent>()
         val collector = launch { vm.events.collect { events += it } }
         advanceUntilIdle()
+        val syncCountBeforeMutation = repo.syncCount
 
         vm.toggleSelection(p1)
         vm.permanentDeleteSelectedAndWait()
@@ -238,6 +253,43 @@ class TrashViewModelTest {
         assertTrue(state.isSelected(p1))
         assertFalse(state.isMutating)
         assertTrue(events.single() is TrashEvent.Error)
+        assertEquals(
+            syncCountBeforeMutation,
+            repo.syncCount,
+            "a failed permanent delete must not fire a background sync",
+        )
+        collector.cancel()
+    }
+
+    @Test
+    fun refreshAndWait_syncsBeforeReadingTheLocalIndex() = runTest(dispatcher) {
+        // The trashed photo only appears once "sync" has run — proves refreshAndWait's
+        // read happens after (not before, and not without) its sync call.
+        val repo = FakeLibraryPhotosRepository()
+        repo.onSync = { repo.trashed += p1 }
+        val vm = TrashViewModel(repo)
+        advanceUntilIdle()
+
+        assertEquals(listOf(p1), vm.state.value.pagedItems)
+        assertEquals(1, repo.syncCount)
+    }
+
+    @Test
+    fun refreshAndWait_onSyncFailure_keepsExistingContentAndEmitsError() = runTest(dispatcher) {
+        val repo = FakeLibraryPhotosRepository(trashed = listOf(p1))
+        val vm = TrashViewModel(repo)
+        advanceUntilIdle()
+        val events = mutableListOf<TrashEvent>()
+        val collector = launch { vm.events.collect { events += it } }
+        advanceUntilIdle()
+
+        repo.syncThrows = true
+        vm.refreshAndWait()
+        advanceUntilIdle()
+
+        assertEquals(listOf(p1), vm.state.value.pagedItems, "a failed sync must not wipe the grid")
+        assertFalse(vm.state.value.isLoading)
+        assertTrue(events.any { it is TrashEvent.Error })
         collector.cancel()
     }
 

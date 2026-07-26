@@ -52,6 +52,10 @@ final class TimelineModel: ObservableObject {
                     self.handleError(err.message)
                 } else if let deleted = e as? TimelineEventDeleted {
                     self.showToast("\(deleted.count) deleted")
+                } else if let favorited = e as? TimelineEventFavorited {
+                    self.showToast("\(favorited.count) added to favorites")
+                } else if let archived = e as? TimelineEventArchived {
+                    self.showToast("\(archived.count) archived")
                 }
             }
         }

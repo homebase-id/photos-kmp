@@ -189,6 +189,9 @@ class TimelineViewModel(
             emitError(e.message ?: "Couldn't favorite")
             return
         }
+        // No WebSocket — the local index only sees this write via an explicit sync, so
+        // Archive/Trash (and a future loadMore here) don't act on a stale row.
+        viewModelScope.launch { runCatching { repository.sync() } }
         _state.update {
             val updated = it.pagedItems.map { p -> if (p.fileId in succeededIds) p.copy(isFavorite = true) else p }
             it.copy(
@@ -228,6 +231,8 @@ class TimelineViewModel(
             emitError(e.message ?: "Couldn't archive")
             return
         }
+        // No WebSocket — reconcile the local index so Archive can see this photo.
+        viewModelScope.launch { runCatching { repository.sync() } }
         val succeededIds = result.succeeded.toSet()
         _state.update {
             val remaining = it.pagedItems.filterNot { p -> p.fileId in succeededIds }

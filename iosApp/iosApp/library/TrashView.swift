@@ -56,7 +56,7 @@ struct TrashView: View {
             Button("Delete Forever", role: .destructive) {
                 Task { await model.permanentDeleteSelected() }
             }
-            .accessibilityIdentifier("trash-delete-forever-confirm")
+            .accessibilityIdentifier("delete-confirm")
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("This can't be undone.")
@@ -75,7 +75,7 @@ struct TrashView: View {
             .padding(.horizontal, PhotosMetrics.screenEdge)
             .padding(.vertical, PhotosMetrics.space8)
             .background(PhotosColor.surface1(scheme))
-            .accessibilityIdentifier("trash-note")
+            .accessibilityIdentifier("trash-header-note")
     }
 
     private static let config = LibraryScreenConfig(

@@ -40,13 +40,15 @@ class TimelineFavoriteArchiveTest {
     ) : PhotosRepository {
         val favoriteCalls = mutableListOf<Pair<Uuid, Boolean>>()
         val archiveCalls = mutableListOf<List<Uuid>>()
+        var syncCount = 0
+            private set
 
         override fun observePhotos(): Flow<List<PhotoItem>> = MutableStateFlow(pages).asStateFlow()
 
         override suspend fun loadPage(beforeUserDate: Long?, limit: Int): List<PhotoItem> =
             if (beforeUserDate == null) pages.take(limit) else emptyList()
 
-        override suspend fun sync() {}
+        override suspend fun sync() { syncCount++ }
 
         override suspend fun deletePhotos(fileIds: List<Uuid>): Boolean = true
 
@@ -125,6 +127,7 @@ class TimelineFavoriteArchiveTest {
         assertTrue(state.selectedIds.isEmpty())
         assertEquals(listOf(p1.fileId to true), repo.favoriteCalls)
         assertEquals(listOf<TimelineEvent>(TimelineEvent.Favorited(1)), events)
+        assertEquals(1, repo.syncCount, "a successful favorite must reconcile the local index")
         collector.cancel()
     }
 
@@ -148,6 +151,7 @@ class TimelineFavoriteArchiveTest {
         assertTrue(state.selectedIds.isEmpty())
         assertEquals(TimelineEvent.Favorited(1), events.first())
         assertTrue(events.last() is TimelineEvent.Error)
+        assertEquals(1, repo.syncCount, "a partially-successful favorite still reconciles the index")
         collector.cancel()
     }
 
@@ -166,6 +170,7 @@ class TimelineFavoriteArchiveTest {
 
         assertFalse(vm.state.value.pagedItems.first { it.fileId == p1.fileId }.isFavorite)
         assertTrue(events.single() is TimelineEvent.Error)
+        assertEquals(0, repo.syncCount, "a failed favorite must not fire a background sync")
         collector.cancel()
     }
 
@@ -188,6 +193,7 @@ class TimelineFavoriteArchiveTest {
         assertTrue(state.selectedIds.isEmpty())
         assertEquals(listOf(listOf(p1.fileId)), repo.archiveCalls)
         assertEquals(listOf<TimelineEvent>(TimelineEvent.Archived(1)), events)
+        assertEquals(1, repo.syncCount, "a successful archive must reconcile the local index")
         collector.cancel()
     }
 
@@ -212,6 +218,7 @@ class TimelineFavoriteArchiveTest {
         assertTrue(state.selectedIds.isEmpty())
         assertEquals(TimelineEvent.Archived(0), events.first())
         assertTrue(events.last() is TimelineEvent.Error)
+        assertEquals(1, repo.syncCount, "a partially-successful archive still reconciles the index")
         collector.cancel()
     }
 
@@ -232,6 +239,7 @@ class TimelineFavoriteArchiveTest {
         assertEquals(listOf(p2, p1), state.pagedItems)
         assertTrue(state.isSelected(p1))
         assertTrue(events.single() is TimelineEvent.Error)
+        assertEquals(0, repo.syncCount, "a failed archive must not fire a background sync")
         collector.cancel()
     }
 }

@@ -92,7 +92,7 @@ struct SelectionTopBar: View {
                 action(
                     "heart.slash",
                     label: "Remove from favorites",
-                    id: "selection-unfavorite",
+                    id: "favorites-unfavorite",
                     tint: PhotosColor.onSurface(scheme),
                     perform: onUnfavorite
                 )
@@ -101,7 +101,7 @@ struct SelectionTopBar: View {
                 action(
                     "tray.and.arrow.up",
                     label: "Unarchive",
-                    id: "selection-unarchive",
+                    id: "archive-unarchive",
                     tint: PhotosColor.onSurface(scheme),
                     perform: onUnarchive
                 )

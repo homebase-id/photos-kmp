@@ -82,8 +82,11 @@ interface PhotosRepository {
  * Runs [PhotosRepository.setFavorite] concurrently over [fileIds] (the method is single-file,
  * unlike [PhotosRepository.setArchived]/[PhotosRepository.restore]) and returns the ids that
  * succeeded. Shared by Timeline's favoriteSelectedAndWait and Favorites' unfavoriteSelectedAndWait.
+ * Chunked into waves of 8 so a large selection doesn't fire hundreds of concurrent requests.
  */
 suspend fun PhotosRepository.setFavoriteBatch(fileIds: List<Uuid>, favorite: Boolean): Set<Uuid> =
-    coroutineScope {
-        fileIds.map { id -> async { id to setFavorite(id, favorite) } }.awaitAll()
+    fileIds.chunked(8).flatMap { chunk ->
+        coroutineScope {
+            chunk.map { id -> async { id to setFavorite(id, favorite) } }.awaitAll()
+        }
     }.filter { it.second }.map { it.first }.toSet()

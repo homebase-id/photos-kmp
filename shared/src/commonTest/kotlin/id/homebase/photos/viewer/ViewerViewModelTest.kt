@@ -41,13 +41,15 @@ class ViewerViewModelTest {
     ) : PhotosRepository {
         val deletedBatches = mutableListOf<List<Uuid>>()
         val favoriteCalls = mutableListOf<Pair<Uuid, Boolean>>()
+        var syncCount = 0
+            private set
 
         override fun observePhotos(): Flow<List<PhotoItem>> =
             MutableStateFlow(emptyList<PhotoItem>()).asStateFlow()
 
         override suspend fun loadPage(beforeUserDate: Long?, limit: Int): List<PhotoItem> = emptyList()
 
-        override suspend fun sync() {}
+        override suspend fun sync() { syncCount++ }
 
         override suspend fun deletePhotos(fileIds: List<Uuid>): Boolean {
             deletedBatches += fileIds
@@ -290,6 +292,7 @@ class ViewerViewModelTest {
         assertTrue(vm.state.value.isFavorite)
         assertTrue(vm.state.value.items[1].isFavorite)
         assertEquals(listOf(p1.fileId to true), repo.favoriteCalls)
+        assertEquals(1, repo.syncCount, "a successful favorite toggle must reconcile the local index")
 
         // Swiping away and back keeps the flip — it lives on the items list entry, not a side field.
         vm.setIndex(0)
@@ -312,6 +315,7 @@ class ViewerViewModelTest {
         assertFalse(vm.state.value.isFavorite)
         assertFalse(vm.state.value.items[1].isFavorite)
         assertTrue(events.single() is ViewerEvent.Error)
+        assertEquals(0, repo.syncCount, "a failed favorite toggle must not fire a background sync")
         collector.cancel()
     }
 
@@ -328,6 +332,7 @@ class ViewerViewModelTest {
 
         assertFalse(vm.state.value.isFavorite)
         assertTrue(events.single() is ViewerEvent.Error)
+        assertEquals(0, repo.syncCount, "a favorite toggle that throws must not fire a background sync")
         collector.cancel()
     }
 }

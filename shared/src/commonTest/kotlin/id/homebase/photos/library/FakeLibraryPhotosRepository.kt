@@ -30,6 +30,10 @@ internal class FakeLibraryPhotosRepository(
     var failRestoreFor: Set<Uuid> = emptySet(),
     var permanentDeleteResult: Boolean = true,
     var permanentDeleteThrows: Boolean = false,
+    var syncThrows: Boolean = false,
+    /** Runs on every [sync] call, before it returns — lets a test prove reads happen after sync
+     *  (e.g. append a row here and assert refreshAndWait's result includes it). */
+    var onSync: (() -> Unit)? = null,
     /** Parks whichever mutation runs next, so a test can observe the in-flight guard. */
     val mutationGate: CompletableDeferred<Unit>? = null,
 ) : PhotosRepository {
@@ -47,7 +51,11 @@ internal class FakeLibraryPhotosRepository(
 
     override fun observePhotos(): Flow<List<PhotoItem>> = MutableStateFlow(emptyList<PhotoItem>()).asStateFlow()
     override suspend fun loadPage(beforeUserDate: Long?, limit: Int): List<PhotoItem> = emptyList()
-    override suspend fun sync() { syncCount++ }
+    override suspend fun sync() {
+        syncCount++
+        if (syncThrows) throw IllegalStateException("sync exploded")
+        onSync?.invoke()
+    }
     override suspend fun deletePhotos(fileIds: List<Uuid>): Boolean = true
     override suspend fun loadThumbnailBytes(item: PhotoItem, maxDim: Int): ByteArray? = null
     override suspend fun loadOriginalBytes(item: PhotoItem): ByteArray? = null

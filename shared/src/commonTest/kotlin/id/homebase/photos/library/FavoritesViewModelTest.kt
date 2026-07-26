@@ -131,6 +131,7 @@ class FavoritesViewModelTest {
         assertTrue(state.selectedIds.isEmpty())
         assertEquals(listOf(p1.fileId to false), repo.setFavoriteCalls)
         assertEquals(listOf<FavoritesEvent>(FavoritesEvent.Unfavorited(1, 0)), events)
+        assertEquals(1, repo.syncCount, "a successful unfavorite must reconcile the local index")
         collector.cancel()
     }
 
@@ -194,6 +195,7 @@ class FavoritesViewModelTest {
         assertTrue(state.isSelected(p1))
         assertFalse(state.isMutating)
         assertTrue(events.single() is FavoritesEvent.Error)
+        assertEquals(0, repo.syncCount, "a failed unfavorite must not fire a background sync")
         collector.cancel()
     }
 

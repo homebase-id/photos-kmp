@@ -61,9 +61,22 @@ class ArchiveViewModel(
         viewModelScope.launch { refreshAndWait() }
     }
 
-    /** Reload the newest local-index page, suspending until done — iOS .refreshable awaits this. */
+    /**
+     * Sync then reload the newest local-index page, suspending until done — iOS .refreshable
+     * awaits this. There's no WebSocket, so pull-to-refresh is the only way this screen sees
+     * server-side changes (an unarchive/restore elsewhere, a fresh archive from Timeline).
+     */
     suspend fun refreshAndWait() {
         _state.update { it.copy(isLoading = true, error = null) }
+        try {
+            repository.sync()
+        } catch (e: CancellationException) {
+            _state.update { it.copy(isLoading = false) }
+            throw e
+        } catch (e: Exception) {
+            Logger.w(tag = TAG) { "refresh sync failed: ${e.message}" }
+            emitError(e.message ?: "Sync failed")
+        }
         val page = safeLoad(beforeUserDate = null)
         if (page != null) applyReplace(page) else _state.update { it.copy(isLoading = false) }
     }
@@ -101,8 +114,9 @@ class ArchiveViewModel(
 
     /**
      * Restore the selected photos out of Archive, suspending until done — iOS awaits this. Drops
-     * the succeeded ones from state and clears the selection unconditionally — no background
-     * refresh, so a deep `loadMore` session keeps its loaded depth instead of snapping to page 1.
+     * the succeeded ones from state and clears the selection unconditionally — no paged reload,
+     * so a deep `loadMore` session keeps its loaded depth instead of snapping to page 1. A
+     * background sync still reconciles the local index (see below) without touching paged state.
      */
     suspend fun unarchiveSelectedAndWait() {
         val current = _state.value
@@ -120,6 +134,9 @@ class ArchiveViewModel(
             emitError(e.message ?: "Couldn't unarchive")
             return
         }
+        // No WebSocket — reconcile the local index in the background (Timeline's loadMore
+        // must not re-append a stale row for a photo that just left Archive).
+        viewModelScope.launch { runCatching { repository.sync() } }
         val succeededIds = result.succeeded.toSet()
         _state.update {
             val remaining = it.pagedItems.filterNot { p -> p.fileId in succeededIds }

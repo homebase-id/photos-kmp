@@ -53,7 +53,7 @@ final class LibraryStatesUITest: XCTestCase {
             app.staticTexts["selection-count"].waitForExistence(timeout: 5),
             "Favorites selection bar did not appear"
         )
-        app.buttons["selection-unfavorite"].tap()
+        app.buttons["favorites-unfavorite"].tap()
 
         let empty = app.descendants(matching: .any)["favorites-empty"].firstMatch
         XCTAssertTrue(empty.waitForExistence(timeout: 20), "Photo did not leave Favorites")

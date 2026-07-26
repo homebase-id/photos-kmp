@@ -139,9 +139,10 @@ class FavoritesViewModel(
 
     /**
      * Unfavorite the selected photos, suspending until done — iOS awaits this. Drops the
-     * succeeded ones from state and clears the selection unconditionally — no background
-     * refresh, so a deep `loadMore` session keeps its loaded depth instead of snapping to
-     * page 1. Emits an [FavoritesEvent.Error] alongside the count on any partial failure.
+     * succeeded ones from state and clears the selection unconditionally — no paged reload,
+     * so a deep `loadMore` session keeps its loaded depth instead of snapping to page 1
+     * (a background sync still reconciles the local index without touching paged state).
+     * Emits an [FavoritesEvent.Error] alongside the count on any partial failure.
      */
     suspend fun unfavoriteSelectedAndWait() {
         val current = _state.value
@@ -159,6 +160,9 @@ class FavoritesViewModel(
             emitError(e.message ?: "Couldn't unfavorite")
             return
         }
+        // No WebSocket — reconcile the local index in the background (Archive/Trash and
+        // Timeline's loadMore must not act on a stale favorite row).
+        viewModelScope.launch { runCatching { repository.sync() } }
         _state.update {
             val remaining = it.pagedItems.filterNot { p -> p.fileId in succeededIds }
             it.copy(

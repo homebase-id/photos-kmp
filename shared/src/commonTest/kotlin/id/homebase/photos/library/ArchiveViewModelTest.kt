@@ -121,6 +121,7 @@ class ArchiveViewModelTest {
         val events = mutableListOf<ArchiveEvent>()
         val collector = launch { vm.events.collect { events += it } }
         advanceUntilIdle()
+        val syncCountBeforeMutation = repo.syncCount // init's refresh already synced once
 
         vm.toggleSelection(p1)
         vm.unarchiveSelectedAndWait()
@@ -131,6 +132,11 @@ class ArchiveViewModelTest {
         assertTrue(state.selectedIds.isEmpty())
         assertEquals(listOf(listOf(p1.fileId) to false), repo.setArchivedCalls)
         assertEquals(listOf<ArchiveEvent>(ArchiveEvent.Unarchived(1, 0)), events)
+        assertEquals(
+            syncCountBeforeMutation + 1,
+            repo.syncCount,
+            "a successful unarchive must reconcile the local index",
+        )
         collector.cancel()
     }
 
@@ -186,6 +192,7 @@ class ArchiveViewModelTest {
         val events = mutableListOf<ArchiveEvent>()
         val collector = launch { vm.events.collect { events += it } }
         advanceUntilIdle()
+        val syncCountBeforeMutation = repo.syncCount
 
         vm.toggleSelection(p1)
         vm.unarchiveSelectedAndWait()
@@ -196,6 +203,39 @@ class ArchiveViewModelTest {
         assertTrue(state.isSelected(p1))
         assertFalse(state.isMutating)
         assertTrue(events.single() is ArchiveEvent.Error)
+        assertEquals(syncCountBeforeMutation, repo.syncCount, "a failed unarchive must not fire a background sync")
+        collector.cancel()
+    }
+
+    @Test
+    fun refreshAndWait_syncsBeforeReadingTheLocalIndex() = runTest(dispatcher) {
+        // The archived photo only appears once "sync" has run — proves refreshAndWait's
+        // read happens after (not before, and not without) its sync call.
+        val repo = FakeLibraryPhotosRepository()
+        repo.onSync = { repo.archived += p1 }
+        val vm = ArchiveViewModel(repo)
+        advanceUntilIdle()
+
+        assertEquals(listOf(p1), vm.state.value.pagedItems)
+        assertEquals(1, repo.syncCount)
+    }
+
+    @Test
+    fun refreshAndWait_onSyncFailure_keepsExistingContentAndEmitsError() = runTest(dispatcher) {
+        val repo = FakeLibraryPhotosRepository(archived = listOf(p1))
+        val vm = ArchiveViewModel(repo)
+        advanceUntilIdle()
+        val events = mutableListOf<ArchiveEvent>()
+        val collector = launch { vm.events.collect { events += it } }
+        advanceUntilIdle()
+
+        repo.syncThrows = true
+        vm.refreshAndWait()
+        advanceUntilIdle()
+
+        assertEquals(listOf(p1), vm.state.value.pagedItems, "a failed sync must not wipe the grid")
+        assertFalse(vm.state.value.isLoading)
+        assertTrue(events.any { it is ArchiveEvent.Error })
         collector.cancel()
     }
 

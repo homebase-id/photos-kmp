@@ -113,7 +113,11 @@ class ViewerViewModel(
             Logger.w(tag = TAG) { "favorite failed: ${e.message}" }
             false
         }
-        if (!ok) {
+        if (ok) {
+            // No WebSocket — reconcile the local index in the background so Archive/Trash/
+            // Favorites don't act on a stale favorite row for this photo.
+            viewModelScope.launch { runCatching { repository.sync() } }
+        } else {
             _state.update { s -> s.copy(items = s.items.map { if (it.fileId == target.fileId) it.copy(isFavorite = target.isFavorite) else it }) }
             _events.tryEmit(ViewerEvent.Error("Couldn't update favorite"))
         }
