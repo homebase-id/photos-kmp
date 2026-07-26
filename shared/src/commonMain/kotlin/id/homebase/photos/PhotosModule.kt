@@ -1,6 +1,7 @@
 package id.homebase.photos
 
 import co.touchlab.kermit.Logger
+import id.homebase.api.client.auth.OwnerSessionRepository
 import id.homebase.api.di.apiModule
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.file.wipeOutboxStaging
@@ -33,6 +34,7 @@ import id.homebase.photos.library.FavoritesViewModel
 import id.homebase.photos.library.TrashViewModel
 import id.homebase.photos.search.RecentSearchesStore
 import id.homebase.photos.search.SearchViewModel
+import id.homebase.photos.settings.SettingsViewModel
 import id.homebase.photos.timeline.TimelineViewModel
 import id.homebase.photos.viewer.VideoHandle
 import id.homebase.photos.viewer.ViewerViewModel
@@ -152,6 +154,14 @@ val photosModule = module {
     // Background pass entrypoint — shared across platforms; only the trigger (WorkManager / BGTask) is native.
     single { BackgroundBackup(youAuth = get(), enabledStore = get(), backupManager = get(), repository = get(), outboxSync = get()) }
     factory { BackupViewModel(get()) }
+
+    // Settings (Batch G): narrow seams only — raw flows + load ref, not the repositories
+    // themselves (final classes, no fakes; see SettingsViewModel doc).
+    factory {
+        val youAuth = get<YouAuthFlowManager>()
+        val owner = get<OwnerSessionRepository>()
+        SettingsViewModel(youAuth.authState, owner.user, owner::load)
+    }
 }
 
 /**
@@ -242,3 +252,6 @@ fun trashViewModel(): TrashViewModel = KoinPlatform.getKoin().get()
 
 /** iOS-callable factory: resolves the search ViewModel from Koin (Swift has no DSL). */
 fun searchViewModel(): SearchViewModel = KoinPlatform.getKoin().get()
+
+/** iOS-callable factory: resolves the settings ViewModel from Koin (Swift has no DSL). */
+fun settingsViewModel(): SettingsViewModel = KoinPlatform.getKoin().get()
