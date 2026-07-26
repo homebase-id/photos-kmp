@@ -5,6 +5,7 @@ import SwiftUI
 /// fullscreen viewer resolve at one place. Timeline still hides the tab bar during selection via
 /// its own `.toolbar(.hidden, for: .tabBar)`.
 struct HomeTabView: View {
+    @Environment(\.colorScheme) private var scheme
     @StateObject private var router = Router()
 
     var body: some View {
@@ -29,6 +30,9 @@ struct HomeTabView: View {
                 .tag(HomeTab.search)
         }
         .environmentObject(router)
+        // Tab-bar chrome sits outside every screen's own tint — without this the selected tab
+        // stayed system blue after the moss accent swap.
+        .tint(PhotosColor.primary(scheme))
         .accessibilityIdentifier("bottom-nav")
         // Single viewer presentation for the whole app — any screen opens it through the router.
         .fullScreenCover(item: $router.viewer) { presentation in
