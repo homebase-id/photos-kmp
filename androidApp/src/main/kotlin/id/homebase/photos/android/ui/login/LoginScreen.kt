@@ -1,5 +1,6 @@
 package id.homebase.photos.android.ui.login
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -13,12 +14,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -27,13 +28,15 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import id.homebase.photos.android.ui.components.LeafGlyph
+import id.homebase.photos.android.R
 import id.homebase.photos.android.ui.theme.PhotosTheme
 import id.homebase.photos.auth.LoginPhase
 import id.homebase.photos.auth.LoginUiState
@@ -61,7 +64,7 @@ fun LoginScreen(viewModel: LoginViewModel, modifier: Modifier = Modifier) {
 
 /**
  * Stateless login screen (design-system §5.1). A full-bleed neutral ground carries a centered column —
- * leaf glyph, wordmark, one line of subtext, the Homebase-ID field, and the primary pill — with a
+ * app mark, wordmark, one line of subtext, the Homebase-ID field, and the primary pill — with a
  * quiet caption pinned to the bottom. The four [LoginPhase] states each render distinctly:
  *  - [LoginPhase.LoggedOut]      → editable field, "Sign in with Homebase" (enabled iff id present).
  *  - [LoginPhase.AwaitingBrowser]/[LoginPhase.Authenticating] → field locked, inline spinner + "Connecting…".
@@ -92,11 +95,10 @@ fun LoginScreen(
                 .padding(horizontal = 16.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Icon(
-                imageVector = LeafGlyph,
+            Image(
+                painter = painterResource(R.mipmap.ic_launcher),
                 contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(40.dp),
+                modifier = Modifier.size(72.dp).clip(RoundedCornerShape(16.dp)),
             )
             Spacer(Modifier.height(16.dp))
             Text(

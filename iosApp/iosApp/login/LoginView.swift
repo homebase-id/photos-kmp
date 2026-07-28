@@ -29,9 +29,11 @@ struct LoginView: View {
             VStack(spacing: PhotosMetrics.space16) {
                 Spacer()
 
-                Image(systemName: "leaf.fill")
-                    .font(.system(size: 36))
-                    .foregroundColor(PhotosColor.primary(scheme))
+                Image("BrandIcon")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 72, height: 72)
+                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
 
                 Text("Homebase Photos")
                     .font(PhotosFont.display)

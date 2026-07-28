@@ -122,6 +122,16 @@ extension PhotosColor {
     static func onError(_ s: ColorScheme) -> Color { onError }
     static func errorContainer(_ s: ColorScheme) -> Color { errorContainer }
     static func onErrorContainer(_ s: ColorScheme) -> Color { onErrorContainer }
+
+    /// Official Homebase Photos gradient (navy → crimson) as carried by the launcher icon and the
+    /// photo-app web logo. Scheme-independent — the brand surfaces read the same in light and dark.
+    static var brandGradient: LinearGradient {
+        LinearGradient(
+            colors: [Color(red: 0.098, green: 0.071, blue: 0.447), Color(red: 0.929, green: 0.012, blue: 0.259)],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+    }
 }
 
 // MARK: - Typography

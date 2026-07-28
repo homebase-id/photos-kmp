@@ -7,10 +7,11 @@ plugins {
     alias(libs.plugins.sqldelight)
     // iOS interop polish: Flow→AsyncSequence, suspend→async. 0.10.12 supports Kotlin 2.3.21.
     alias(libs.plugins.skie)
-    // Compose-as-a-library only: the copied protocol layer references Compose data types
-    // (@Immutable, ImageBitmap / asImageBitmap / toComposeImageBitmap). NOT shared Compose UI.
-    alias(libs.plugins.composeMultiplatform)
-    alias(libs.plugins.composeCompiler)
+    // NO Compose plugins here. The copied protocol layer references Compose *data types* only
+    // (@Immutable, ImageBitmap / asImageBitmap / toComposeImageBitmap), pulled in as plain
+    // dependencies below — there is no @Composable and no composeResources/ in this module.
+    // Applying org.jetbrains.compose registers syncComposeResourcesForIos, which fails the Xcode
+    // framework build phase ("Cannot query the value of this provider").
 }
 
 kotlin {

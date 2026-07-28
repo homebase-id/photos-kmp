@@ -28,7 +28,9 @@ targets:
       path: Info.plist
       properties:
         CFBundleDisplayName: Homebase Photos
-        UILaunchScreen: {}
+        # Brand ground so the pre-SwiftUI frame doesn't flash white into the gradient SplashView.
+        UILaunchScreen:
+          UIColorName: LaunchBackground
         # Portrait lock (owner directive) — iPhone never rotates.
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait

@@ -1,26 +1,25 @@
 import SwiftUI
 
 /// Branded launch/resolve screen shown while the stored session resolves (the `.splash` route).
-/// Reuses the login wordmark motif — the `leaf.fill` glyph + "Homebase Photos" — over the plain
-/// system background, with a quiet spinner so a slow session restore never looks frozen.
+/// The official white aperture over the brand gradient + "Homebase Photos", with a quiet spinner so
+/// a slow session restore never looks frozen. Mirrors the Android `SplashScreen` composable.
 struct SplashView: View {
-    @Environment(\.colorScheme) private var scheme
-
     var body: some View {
         ZStack {
-            PhotosColor.background(scheme).ignoresSafeArea()
+            PhotosColor.brandGradient.ignoresSafeArea()
 
             VStack(spacing: PhotosMetrics.space16) {
-                Image(systemName: "leaf.fill")
-                    .font(.system(size: 44))
-                    .foregroundColor(PhotosColor.primary(scheme))
+                Image("BrandMark")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 120, height: 120)
 
                 Text("Homebase Photos")
                     .font(PhotosFont.display)
-                    .foregroundColor(PhotosColor.onBackground(scheme))
+                    .foregroundColor(.white)
 
                 ProgressView()
-                    .tint(PhotosColor.onSurfaceVariant(scheme))
+                    .tint(.white)
                     .padding(.top, PhotosMetrics.space8)
             }
         }
