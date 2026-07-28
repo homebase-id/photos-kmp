@@ -1,8 +1,8 @@
 # Homebase Photos — Handoff
 
 **For:** a fresh Claude Code session opened in `~/Documents/GitHub/homebase-photos`.
-**Updated:** 2026-07-26 (keep this file current — owner directive: refresh it at the end of every finishing run).
-**Status:** **MVP feature-complete.** Batches A–E merged to `main` (`1e3367f`); **Batch F (Memories) SHELVED by owner** (2026-07-26: "an advanced feature" — post-MVP; plan doc kept); **Batch G (Settings & Backup + moss-green accent) DONE, review-clean, verified, Redmi-QA'd — `8d0bff5..aa7b11f` on `photos-ui-batch-g`** (worktrees retired — work happens in the main repo checkout). Remaining before ship: merge `photos-ui-batch-g`, owner calls on Delete→bin routing + final iOS app icon, and the still-open on-device QA gates from B/C/D.
+**Updated:** 2026-07-28 (keep this file current — owner directive: refresh it at the end of every finishing run).
+**Status:** **MVP feature-complete.** Batches A–G merged to `main`; **Batch F (Memories) SHELVED by owner** (2026-07-26: "an advanced feature" — post-MVP; plan doc kept). The repo now has a git remote and CI/release workflows (see "Shipping / CI"), and carries the official aperture app icon. Remaining before ship: **deploy secrets on the GitHub repo**, owner call on Delete→bin routing, `POST_NOTIFICATIONS` for Android 13+, and the still-open on-device QA gates from B/C/D.
 
 ---
 
@@ -307,6 +307,28 @@ trigger + config were new.
   `.queue`); **its handler execution is device-only** — the simulator neither auto-launches nor
   `_simulateLaunch`es a continued task (that private API covers only BGProcessingTask/BGAppRefreshTask),
   but the handler runs the same already-proven `backgroundBackup().run()`. Confirm on a real iPhone (26+).
+
+## Shipping / CI (2026-07-28)
+
+Remote: `origin` → `https://github.com/homebase-id/photos-kmp.git` (`main` only; the seven local
+`photos-*` batch branches are not pushed).
+
+- `.github/workflows/ci.yml` — PR + manual: `:shared:jvmTest` + `:androidApp:assembleDebug`.
+- `.github/workflows/release.yml` — tag push + manual: signed AAB (ubuntu) + signed IPA (macOS),
+  attached to the GitHub Release. Secret names are **copied verbatim from photo-app** because we
+  share its bundle id `id.homebase.photos`, so the same keystore/profile signs both.
+- Versioning: Android via `-PversionCode`/`-PversionName` Gradle props, iOS via PlistBuddy on
+  `iosApp/Info.plist`. No build file is rewritten in CI.
+
+**Blocking:** `photos-kmp` currently has **zero** secrets, and photo-app holds its four iOS ones at
+*repo* level (they do not inherit). Someone with org access must add `IOS_PHOTO_P12_BASE64`,
+`IOS_PHOTO_CERTIFICATE_PASSWORD`, `PHOTOS_IOS_MOBILE_PROVISION_BASE64`, `IOS_TEAM_ID`,
+`ANDROID_KEYSTORE_FILE_BASE64_ENCODED`, `ANDROID_KEYSTORE_ALIAS`,
+`ANDROID_KEYSTORE_STORE_PASSWORD`, `ANDROID_KEYSTORE_KEY_PASSWORD`.
+
+**Brand identity:** the green leaf placeholder is gone. Icon/splash assets are photo-app's official
+crimson→navy aperture, copied verbatim. Reuse `@mipmap/ic_launcher{,_foreground}` (Android) and the
+`BrandIcon`/`BrandMark` imagesets (iOS) — do not draw a substitute mark.
 
 ## Blockers / owner actions
 
