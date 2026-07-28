@@ -314,17 +314,29 @@ Remote: `origin` → `https://github.com/homebase-id/photos-kmp.git` (`main` onl
 `photos-*` batch branches are not pushed).
 
 - `.github/workflows/ci.yml` — PR + manual: `:shared:jvmTest` + `:androidApp:assembleDebug`.
+  **Verified green 2026-07-28** (run `30380419425`, 6m22s).
 - `.github/workflows/release.yml` — tag push + manual: signed AAB (ubuntu) + signed IPA (macOS),
-  attached to the GitHub Release. Secret names are **copied verbatim from photo-app** because we
-  share its bundle id `id.homebase.photos`, so the same keystore/profile signs both.
+  attached to the GitHub Release.
+- `.github/workflows/release-internal.yml` — manual: Android → **Play internal track**, iOS →
+  **TestFlight**, each behind a dispatch toggle. Modelled on chat-kmp's
+  `build-mobile-release-dev.yml`, minus the parts we don't need (flavours, CocoaPods, FFmpegKit
+  signature stripping, K/N memory tuning — add the last one if the macOS runner OOMs).
+- Secret names are **copied verbatim from photo-app** because we share its bundle id
+  `id.homebase.photos`, so the same keystore/profile signs both.
 - Versioning: Android via `-PversionCode`/`-PversionName` Gradle props, iOS via PlistBuddy on
   `iosApp/Info.plist`. No build file is rewritten in CI.
 
-**Blocking:** `photos-kmp` currently has **zero** secrets, and photo-app holds its four iOS ones at
-*repo* level (they do not inherit). Someone with org access must add `IOS_PHOTO_P12_BASE64`,
-`IOS_PHOTO_CERTIFICATE_PASSWORD`, `PHOTOS_IOS_MOBILE_PROVISION_BASE64`, `IOS_TEAM_ID`,
-`ANDROID_KEYSTORE_FILE_BASE64_ENCODED`, `ANDROID_KEYSTORE_ALIAS`,
-`ANDROID_KEYSTORE_STORE_PASSWORD`, `ANDROID_KEYSTORE_KEY_PASSWORD`.
+**Blocking (checked 2026-07-28 via `gh api .../actions/organization-secrets`):** the org supplies only
+the four `ANDROID_KEYSTORE_*` and `IOS_TEAM_ID`; `photos-kmp` has **zero repo-level secrets**. The
+`IOS_FEED_*`/`FEED_*` org secrets are chat-kmp's — wrong app, don't wire them in. So the Android half
+runs today and the iOS half does not. Still to add:
+`IOS_PHOTO_P12_BASE64`, `IOS_PHOTO_CERTIFICATE_PASSWORD`, `PHOTOS_IOS_MOBILE_PROVISION_BASE64`
+(photo-app holds these at *repo* level, so they do not inherit), plus `APPSTORE_API_KEY_ID`,
+`APPSTORE_API_ISSUER_ID`, `APPSTORE_API_PRIVATE_KEY` (TestFlight) and
+`GOOGLE_PLAY_SERVICE_ACCOUNT_JSON` (Play internal).
+
+Not built (chat-kmp has them, nobody asked yet): promote-to-production workflows. Android promotion
+needs the Gradle Play Publisher plugin; iOS needs a Fastfile with `submit_for_review`.
 
 **Brand identity:** the green leaf placeholder is gone. Icon/splash assets are photo-app's official
 crimson→navy aperture, copied verbatim. Reuse `@mipmap/ic_launcher{,_foreground}` (Android) and the
