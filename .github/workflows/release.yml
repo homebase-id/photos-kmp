@@ -1,0 +1,106 @@
+name: Build native release
+
+# Secret names are inherited verbatim from homebase-id/photo-app so the org's
+# existing signing secrets work here unchanged (same bundle id: id.homebase.photos).
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - '*'
+
+jobs:
+  build-android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '21'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Decode Homebase Keystore to file
+        id: decode_keystore_file
+        env:
+          ENCODED_STRING: ${{ secrets.ANDROID_KEYSTORE_FILE_BASE64_ENCODED }}
+        run: |
+          KEYSTORE_FILE_PATH="${RUNNER_TEMP}/homebase.keystore"
+          echo "$ENCODED_STRING" | base64 -di > "$KEYSTORE_FILE_PATH"
+          echo "KEYSTORE_FILE_PATH=$KEYSTORE_FILE_PATH" >> $GITHUB_OUTPUT
+
+      - name: Build Android Bundle
+        run: |
+          ./gradlew :androidApp:bundleRelease \
+            -PversionCode=${{ github.run_number }} \
+            -PversionName="${GITHUB_REF_NAME#v}"
+        env:
+          SIGNING_KEYSTORE_FILE_PATH: ${{ steps.decode_keystore_file.outputs.KEYSTORE_FILE_PATH }}
+          SIGNING_KEY_ALIAS: ${{ secrets.ANDROID_KEYSTORE_ALIAS }}
+          SIGNING_STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_STORE_PASSWORD }}
+          SIGNING_KEY_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_KEY_PASSWORD }}
+
+      - name: Rename output
+        run: mv androidApp/build/outputs/bundle/release/*.aab homebase-photos.aab
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: homebase-photos-android
+          path: homebase-photos.aab
+
+      - name: Create Github Release
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: homebase-photos.aab
+
+  build-ios:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      # The xcodeproj prebuild phase shells out to ./gradlew for Shared.framework.
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '21'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Bump version
+        run: |
+          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion ${{ github.run_number }}" iosApp/Info.plist
+          /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString ${GITHUB_REF_NAME#v}" iosApp/Info.plist
+
+      - name: Build iOS App
+        uses: yukiarrr/ios-build-action@v1.11.0
+        with:
+          project-path: iosApp/iosApp.xcodeproj
+          p12-base64: ${{ secrets.IOS_PHOTO_P12_BASE64 }}
+          mobileprovision-base64: ${{ secrets.PHOTOS_IOS_MOBILE_PROVISION_BASE64 }}
+          code-signing-identity: 'iPhone Distribution'
+          team-id: ${{ secrets.IOS_TEAM_ID }}
+          certificate-password: ${{ secrets.IOS_PHOTO_CERTIFICATE_PASSWORD }}
+          scheme: iosApp
+
+      - name: Rename output
+        run: mv output.ipa homebase-photos.ipa
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: homebase-photos-ios
+          path: homebase-photos.ipa
+
+      - name: Create Github Release
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: homebase-photos.ipa
