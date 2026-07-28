@@ -1,0 +1,161 @@
+name: Internal Release (TestFlight + Play internal)
+
+# Mirrors chat-kmp's build-mobile-release-dev.yml, minus the machinery this repo doesn't need
+# (no product flavours, no CocoaPods, no FFmpegKit signing in the release archive — the bundled
+# xcframework is simulator-test-only here).
+#
+# Versioning: no gradle/version.properties in this repo, so the build number is derived from the
+# run number. Android takes it via -P props; iOS via PlistBuddy on iosApp/Info.plist.
+
+on:
+  workflow_dispatch:
+    inputs:
+      upload_to_testflight:
+        description: "Upload the IPA to TestFlight (untick for CI-debug runs)"
+        type: boolean
+        default: true
+      upload_to_play:
+        description: "Upload the AAB to the Play internal track (untick for CI-debug runs)"
+        type: boolean
+        default: true
+
+concurrency:
+  group: release-internal-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Keeps internal build numbers clear of the tag-driven release.yml lineage.
+  VERSION_CODE_BASE: 1000
+  MARKETING_VERSION: "0.1"
+
+jobs:
+  android:
+    name: Android → Play internal
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Compute version
+        id: version
+        run: |
+          VERSION_CODE=$(( VERSION_CODE_BASE + GITHUB_RUN_NUMBER ))
+          echo "VERSION_CODE=$VERSION_CODE" >> $GITHUB_OUTPUT
+          echo "VERSION_NAME=${MARKETING_VERSION}.${VERSION_CODE}" >> $GITHUB_OUTPUT
+
+      - name: Decode Homebase Keystore to file
+        id: decode_keystore_file
+        env:
+          ENCODED_STRING: ${{ secrets.ANDROID_KEYSTORE_FILE_BASE64_ENCODED }}
+        run: |
+          KEYSTORE_FILE_PATH="${RUNNER_TEMP}/homebase.keystore"
+          echo "$ENCODED_STRING" | base64 -di > "$KEYSTORE_FILE_PATH"
+          echo "KEYSTORE_FILE_PATH=$KEYSTORE_FILE_PATH" >> $GITHUB_OUTPUT
+
+      - name: Build Android Bundle
+        run: |
+          ./gradlew :androidApp:bundleRelease \
+            -PversionCode=${{ steps.version.outputs.VERSION_CODE }} \
+            -PversionName="${{ steps.version.outputs.VERSION_NAME }}"
+        env:
+          SIGNING_KEYSTORE_FILE_PATH: ${{ steps.decode_keystore_file.outputs.KEYSTORE_FILE_PATH }}
+          SIGNING_KEY_ALIAS: ${{ secrets.ANDROID_KEYSTORE_ALIAS }}
+          SIGNING_STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_STORE_PASSWORD }}
+          SIGNING_KEY_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_KEY_PASSWORD }}
+
+      - name: Rename output
+        run: mv androidApp/build/outputs/bundle/release/*.aab homebase-photos.aab
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: homebase-photos-android-${{ steps.version.outputs.VERSION_CODE }}
+          path: homebase-photos.aab
+
+      - name: Publish to Google Play internal track
+        if: inputs.upload_to_play
+        uses: r0adkll/upload-google-play@v1
+        with:
+          serviceAccountPlainText: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: id.homebase.photos
+          releaseFiles: homebase-photos.aab
+          track: internal
+          status: completed
+
+  ios:
+    name: iOS → TestFlight
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      # The xcodeproj prebuild phase shells out to ./gradlew for Shared.framework.
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      # The Kotlin/Native toolchain is a ~1 GB download and dominates a cold run.
+      - name: Cache Kotlin/Native
+        uses: actions/cache@v4
+        with:
+          path: ~/.konan
+          key: konan-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml', 'gradle.properties') }}
+          restore-keys: konan-${{ runner.os }}-
+
+      - name: Set iOS version
+        run: |
+          VERSION_CODE=$(( VERSION_CODE_BASE + GITHUB_RUN_NUMBER ))
+          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $VERSION_CODE" iosApp/Info.plist
+          /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString ${MARKETING_VERSION}.${VERSION_CODE}" iosApp/Info.plist
+
+      - name: Build iOS App
+        timeout-minutes: 90
+        uses: yukiarrr/ios-build-action@v1.12.0
+        with:
+          project-path: iosApp/iosApp.xcodeproj
+          scheme: iosApp
+          p12-base64: ${{ secrets.IOS_PHOTO_P12_BASE64 }}
+          mobileprovision-base64: ${{ secrets.PHOTOS_IOS_MOBILE_PROVISION_BASE64 }}
+          # Matches the identity photo-app's p12 was issued under — same cert, same name.
+          code-signing-identity: "iPhone Distribution"
+          team-id: ${{ secrets.IOS_TEAM_ID }}
+          certificate-password: ${{ secrets.IOS_PHOTO_CERTIFICATE_PASSWORD }}
+
+      - name: Rename IPA
+        run: mv output.ipa homebase-photos.ipa
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: homebase-photos-ios
+          path: homebase-photos.ipa
+
+      - name: Setup App Store Connect API key
+        if: inputs.upload_to_testflight
+        run: |
+          mkdir -p "${{ runner.temp }}/private_keys"
+          echo "${{ secrets.APPSTORE_API_PRIVATE_KEY }}" > \
+            "${{ runner.temp }}/private_keys/AuthKey_${{ secrets.APPSTORE_API_KEY_ID }}.p8"
+
+      - name: Upload to TestFlight
+        if: inputs.upload_to_testflight
+        run: |
+          xcrun altool --upload-app \
+            --type ios \
+            --file homebase-photos.ipa \
+            --apiKey "${{ secrets.APPSTORE_API_KEY_ID }}" \
+            --apiIssuer "${{ secrets.APPSTORE_API_ISSUER_ID }}"
+        env:
+          API_PRIVATE_KEYS_DIR: ${{ runner.temp }}/private_keys

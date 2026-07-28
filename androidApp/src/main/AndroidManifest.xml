@@ -11,6 +11,9 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <!-- Content-trigger jobs don't survive reboot; the boot receiver re-arms the media watch. -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!-- BackupWorker's foreground-service progress notification. Android 13+ drops it silently
+         without this; the worker itself still runs, so the app never gates backup on the grant. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <application
         android:name=".PhotosApp"

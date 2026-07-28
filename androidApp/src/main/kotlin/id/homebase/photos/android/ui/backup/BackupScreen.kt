@@ -76,12 +76,28 @@ fun BackupScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val permission = remember { requiredMediaPermission() }
 
+    // Progress notifications are advisory — asked for, never gated on. A denial only costs the
+    // progress bar; BackupWorker's foreground service runs either way.
+    val notificationsLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { }
+
+    val enableBackup = {
+        viewModel.onToggle(true)
+        BackupScheduler.enable(context)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) !=
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            notificationsLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
+
     val enableLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted ->
         if (granted) {
-            viewModel.onToggle(true)
-            BackupScheduler.enable(context)
+            enableBackup()
         } else {
             scope.launch { snackbarHostState.showSnackbar("Allow photo access to back up your library.") }
         }
@@ -114,8 +130,7 @@ fun BackupScreen(
         onToggle = { wantEnabled ->
             if (wantEnabled) {
                 if (context.checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED) {
-                    viewModel.onToggle(true)
-                    BackupScheduler.enable(context)
+                    enableBackup()
                 } else {
                     enableLauncher.launch(permission)
                 }
